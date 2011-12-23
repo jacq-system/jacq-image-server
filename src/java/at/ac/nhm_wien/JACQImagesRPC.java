@@ -1,7 +1,7 @@
 package at.ac.nhm_wien;
 
 /*
-FReuD
+JACQ
 Copyright (C) 2011 Naturhistorisches Museum Wien
 
 This program is free software: you can redistribute it and/or modify
@@ -33,21 +33,23 @@ import net.sf.json.JSONObject;
 import java.util.Map;
 
 import java.sql.*;
+import java.text.SimpleDateFormat;
 import java.util.HashMap;
 import java.util.Properties;
+import java.util.Date;
 
 /**
  *
  * @author wkoller
  */
-public class FReuDImagesRPC extends HttpServlet {
+public class JACQImagesRPC extends HttpServlet {
     private String m_requestId = "";
     private JSONArray m_requestParams = null;
     private JSONObject m_response = null;
     private Properties m_properties = new Properties();
     private Connection m_conn = null;
     
-    private Thread m_importThread = null;
+    private ImageImportThread m_importThread = null;
     
     @Override
     public void init() throws ServletException {
@@ -56,32 +58,33 @@ public class FReuDImagesRPC extends HttpServlet {
             m_properties.load(new FileInputStream(getServletContext().getRealPath( "/WEB-INF/"+ getClass().getSimpleName() + ".properties" )));
             // Establish "connection" to SQLite database
             Class.forName("org.sqlite.JDBC");
-            m_conn = DriverManager.getConnection("jdbc:sqlite:" + m_properties.getProperty("FReuDImagesRPC.database") );
-
+            m_conn = DriverManager.getConnection("jdbc:sqlite:" + m_properties.getProperty("JACQImagesRPC.database") );
+            m_conn.setAutoCommit(true);
+            
             // Check if database is already initialized
             Statement stat = m_conn.createStatement();
             // Check for resources table
             ResultSet rs = stat.executeQuery("SELECT name FROM sqlite_master WHERE name = 'resources' AND type = 'table'");
             if( !rs.next() ) {
-                stat.executeUpdate( "CREATE table `resources` ( `r_id` CONSTRAINT `r_id_pk`, PRIMARY KEY, `identifier` CONSTRAINT `identifier_unique` UNIQUE ON CONFLICT FAIL, `imageFile` )" );
+                stat.executeUpdate( "CREATE table `resources` ( `r_id` INTEGER CONSTRAINT `r_id_pk` PRIMARY KEY AUTOINCREMENT, `identifier` TEXT CONSTRAINT `identifier_unique` UNIQUE ON CONFLICT FAIL, `imageFile` TEXT )" );
             }
             rs.close();
             // Check for import-log table
             rs = stat.executeQuery("SELECT name FROM sqlite_master WHERE name = 'import_logs' AND type = 'table'");
             if( !rs.next() ) {
-                stat.executeUpdate( "CREATE table `import_logs` ( `il_id` CONSTRAINT `il_id_pk` PRIMARY KEY, `thread_id`, `logtime` DEFAULT 0, `identifier`, `message` )" );
+                stat.executeUpdate( "CREATE table `import_logs` ( `il_id` INTEGER CONSTRAINT `il_id_pk` PRIMARY KEY AUTOINCREMENT, `it_id` INTEGER, `logtime` INTEGER DEFAULT 0, `identifier` TEXT, `message` TEXT )" );
             }
             rs.close();
             // Check for thread table
             rs = stat.executeQuery("SELECT name FROM sqlite_master WHERE name = 'import_threads' AND type = 'table'");
             if( !rs.next() ) {
-                stat.executeUpdate( "CREATE table `import_threads` ( `it_id` CONSTRAINT `it_id_pk` PRIMARY KEY, `thread_id` CONSTRAINT `thread_id_unique` UNIQUE ON CONFLICT FAIL, `starttime` DEFAULT 0, `endtime` DEFAULT 0 )" );
+                stat.executeUpdate( "CREATE table `import_threads` ( `it_id` INTEGER CONSTRAINT `it_id_pk` PRIMARY KEY AUTOINCREMENT, `thread_id` INTEGER, `starttime` INTEGER DEFAULT 0, `endtime` INTEGER DEFAULT 0 )" );
             }
             rs.close();
             // Check for archive resources table
             rs = stat.executeQuery("SELECT name FROM sqlite_master WHERE name = 'archive_resources' AND type = 'table'");
             if( !rs.next() ) {
-                stat.executeUpdate( "CREATE table `archive_resources` ( `ar_id` CONSTRAINT `ar_id_pk` PRIMARY KEY AUTOINCREMENT, `identifier`, `imageFile` )" );
+                stat.executeUpdate( "CREATE table `archive_resources` ( `ar_id` INTEGER CONSTRAINT `ar_id_pk` PRIMARY KEY AUTOINCREMENT, `identifier` TEXT, `imageFile` TEXT )" );
             }
             rs.close();
         }
@@ -181,11 +184,40 @@ public class FReuDImagesRPC extends HttpServlet {
      * Starts a thread for importing new images
      */
     public void importImages() {
+        // Check if thread is already running
         if( m_importThread == null ) {
-            m_importThread = new ImageImportThread();
-            m_importThread.start();
+            try {
+                m_importThread = new ImageImportThread();
 
-            m_response.element( "result", "1" );
+                PreparedStatement prep = m_conn.prepareStatement( "INSERT INTO `import_threads` ( `thread_id`, `starttime` ) values ( ?, ? )" );
+                prep.setLong(1, m_importThread.getId());
+                prep.setLong(2, System.currentTimeMillis() / 1000);
+                prep.executeUpdate();
+                
+                // Fetch auto-increment value and assign the unique number to our thread
+                ResultSet it_id_result = prep.getGeneratedKeys();
+                if( it_id_result.next() ) {
+                    m_importThread.it_id = it_id_result.getInt(1);
+                    m_importThread.start();
+                    
+                    it_id_result.close();
+
+                    m_response.element( "result", "1" );
+                }
+                // If we do not have any auto-increment value, something went terrible wrong
+                else {
+                    m_response.element( "result", "" );
+                    m_response.element( "error", "Thread log insert failed - can't start!" );
+                }
+
+                // Free up statement
+                prep.close();
+            }
+            // Something went wrong during thread startup
+            catch( Exception e ) {
+                m_response.element( "result", "" );
+                m_response.element( "error", "Error while trying to start thread!" );
+            }
         }
         else {
             m_response.element( "result", "" );
@@ -219,6 +251,7 @@ public class FReuDImagesRPC extends HttpServlet {
      * List all images currently stored in the archive
      */
     public void listDjatokaImages() {
+        
         try {
             JSONArray resources = new JSONArray();
             
@@ -252,6 +285,7 @@ public class FReuDImagesRPC extends HttpServlet {
                 threads.put( rs.getString("thread_id"), rs.getString("starttime") );
             }
             rs.close();
+            stat.close();
             
             m_response.put("result", threads);
         }
@@ -276,6 +310,7 @@ public class FReuDImagesRPC extends HttpServlet {
                 logs.add( rs.getString("message") );
             }
             rs.close();
+            stat.close();
             
             m_response.put("result", logs);
         }
@@ -303,6 +338,7 @@ public class FReuDImagesRPC extends HttpServlet {
                 images.add( rs.getString("identifier") );
             }
             rs.close();
+            stat.close();
             
             m_response.put("result", images);
         }
@@ -319,6 +355,18 @@ public class FReuDImagesRPC extends HttpServlet {
      * Thread callback which notifies the servlet that the import is finished
      */
     private void importImagesFinished() {
+        try {
+            PreparedStatement prep = m_conn.prepareStatement("UPDATE `import_threads` set `endtime` = ? WHERE `it_id` = ?");
+            prep.setLong(1, System.currentTimeMillis() / 1000);
+            prep.setLong(2, m_importThread.it_id);
+            prep.executeUpdate();
+            prep.close();
+        }
+        catch( Exception e ) {
+            System.err.println( "Error while finishing thread:" );
+            e.getMessage();
+        }
+        
         m_importThread = null;
     }
 
@@ -326,47 +374,117 @@ public class FReuDImagesRPC extends HttpServlet {
      * Import thread which imports newly added images
      */
     private class ImageImportThread extends Thread {
+        public int it_id = 0;
+        
         @Override
         public void run() {
             try {
                 // Get a list of images to import
-                HashMap<String,String> importContent = listDirectory(m_properties.getProperty("FReuDImagesRPC.importDirectory"));
-                
+                HashMap<String,String> importContent = listDirectory(m_properties.getProperty("JACQImagesRPC.importDirectory"));
+
                 Iterator<Map.Entry<String,String>> icIt = importContent.entrySet().iterator();
                 PreparedStatement prepStat = m_conn.prepareStatement( "SELECT `identifier` FROM `resources` WHERE `identifier` = ?" );
-                PreparedStatement insertStat = m_conn.prepareStatement( "INSERT INTO `resources` values (?, ?)" );
-                PreparedStatement logStat = m_conn.prepareStatement( "INSERT INTO `logs_import` ( `logtime`, `identifier`, `message` ) values(?, ?, ?)" );
+                PreparedStatement insertStat = m_conn.prepareStatement( "INSERT INTO `resources` ( `identifier`, `imageFile` ) values (?, ?)" );
+                PreparedStatement archiveInsertStat = m_conn.prepareStatement( "INSERT INTO `archive_resources` ( `identifier`, `imageFile` ) values (?, ?)" );
+                PreparedStatement logStat = m_conn.prepareStatement( "INSERT INTO `import_logs` ( `it_id`, `logtime`, `identifier`, `message` ) values(?, ?, ?, ?)" );
                 while( icIt.hasNext() ) {
                     Map.Entry<String,String> entry = icIt.next();
                     prepStat.setString(1, entry.getKey());
-                    
+
                     // Check if the identifier already exists
                     ResultSet rs = prepStat.executeQuery();
                     boolean status = rs.next();
                     rs.close();
                     if( !status ) {
+                        String identifier = entry.getKey();
+                        
                         // Create input and output file-names & paths
                         String inputName = entry.getValue();
-                        String outputName = m_properties.getProperty("FReuDImagesRPC.resourcesDirectory") + entry.getKey() + ".jp2";
+                        String outputName = m_properties.getProperty("JACQImagesRPC.resourcesDirectory") + identifier + ".jp2";
                         
                         // Convert new image
-                        String[] compress = new String[]{ m_properties.getProperty("FReuDImagesRPC.djatokaDirectory").concat( "bin/compress.sh" ), "-i", inputName, "-o", outputName };
+                        String[] compress = new String[]{ m_properties.getProperty("JACQImagesRPC.djatokaDirectory").concat( "bin/compress.sh" ), "-i", inputName, "-o", outputName };
                         Process compressProc = Runtime.getRuntime().exec(compress);
                         compressProc.waitFor();
                         
-                        // Insert id into database
-                        insertStat.setString(1, entry.getKey());
-                        insertStat.setString(2, outputName );
-                        insertStat.executeUpdate();
+                        // Check if image conversion was successfull
+                        File outputFile = new File(outputName);
+                        if( outputFile.exists() ) {
+                            // Insert id into database
+                            insertStat.setString(1, identifier);
+                            insertStat.setString(2, outputName );
+                            insertStat.executeUpdate();
+                            
+                            // Move the file into the archive
+                            File archiveDir = new File( m_properties.getProperty("JACQImagesRPC.archiveDirectory") );
+                            if( archiveDir.exists() && archiveDir.isDirectory() ) {
+                                SimpleDateFormat yearFormat = new SimpleDateFormat("yyyy/yyMMdd/");
+                                Date now = new Date();
+                                
+                                // Find the correct day folder
+                                File archiveSubDir = new File(archiveDir, yearFormat.format(now));
+                                if( archiveSubDir.exists() || archiveSubDir.mkdirs() ) {
+                                    // Finally move the input file to the archive folder
+                                    File inputFile = new File(inputName);
+                                    File archiveFile = new File(archiveSubDir,inputFile.getName());
+                                    
+                                    // Move the file into the archive
+                                    if( inputFile.renameTo(archiveFile) ) {
+                                        // Update archive resources list
+                                        archiveInsertStat.setString(1, identifier);
+                                        archiveInsertStat.setString(2, archiveFile.getAbsolutePath() );
+                                        archiveInsertStat.executeUpdate();
+                                    }
+                                    else {
+                                        // Log this issue
+                                        logStat.setInt(1,it_id);
+                                        logStat.setString(2, String.valueOf(System.currentTimeMillis() / 1000) );
+                                        logStat.setString(3, identifier);
+                                        logStat.setString(4, "Unable to move file into archive" );
+                                        logStat.executeUpdate();
+                                    }
+                                }
+                                else {
+                                    // Log this issue
+                                    logStat.setInt(1,it_id);
+                                    logStat.setString(2, String.valueOf(System.currentTimeMillis() / 1000) );
+                                    logStat.setString(3, identifier);
+                                    logStat.setString(4, "Unable to access archive sub-directory" );
+                                    logStat.executeUpdate();
+                                }
+                            }
+                            else {
+                                // Log this issue
+                                logStat.setInt(1,it_id);
+                                logStat.setString(2, String.valueOf(System.currentTimeMillis() / 1000) );
+                                logStat.setString(3, identifier);
+                                logStat.setString(4, "Unable to access archive directory" );
+                                logStat.executeUpdate();
+                            }
+                        }
+                        else {
+                            // Log this issue
+                            logStat.setInt(1,it_id);
+                            logStat.setString(2, String.valueOf(System.currentTimeMillis() / 1000) );
+                            logStat.setString(3, identifier);
+                            logStat.setString(4, "Writing file for Djatoka failed" );
+                            logStat.executeUpdate();
+                        }
                     }
                     else {
                         // Log this issue
-                        logStat.setString(1, String.valueOf(System.currentTimeMillis() / 1000L) );
-                        logStat.setString(2, entry.getKey());
-                        logStat.setString(3, "Identifier already exists!" );
+                        logStat.setInt(1,it_id);
+                        logStat.setString(2, String.valueOf(System.currentTimeMillis() / 1000) );
+                        logStat.setString(3, entry.getKey());
+                        logStat.setString(4, "Identifier already exists" );
                         logStat.executeUpdate();
                     }
                 }
+                // Release prepared statements
+                prepStat.close();
+                insertStat.close();
+                archiveInsertStat.close();
+                logStat.close();
             }
             catch( Exception e ) {
                 System.err.println( e.toString() );
@@ -383,7 +501,7 @@ public class FReuDImagesRPC extends HttpServlet {
      */
     private void rescanDjatokaImagesDirectory() {
         try {
-            HashMap<String,String> dirContent = listDirectory(m_properties.getProperty("FReuDImagesRPC.resourcesDirectory"));
+            HashMap<String,String> dirContent = listDirectory(m_properties.getProperty("JACQImagesRPC.resourcesDirectory"));
 
             // Cleanup old entries
             Statement stat = m_conn.createStatement();
