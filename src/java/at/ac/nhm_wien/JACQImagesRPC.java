@@ -37,6 +37,7 @@ import java.text.SimpleDateFormat;
 import java.util.HashMap;
 import java.util.Properties;
 import java.util.Date;
+import javax.xml.crypto.dsig.TransformException;
 
 /**
  *
@@ -156,13 +157,15 @@ public class JACQImagesRPC extends HttpServlet {
             m_response.put("id", m_requestId);
             try {
                 if( m_requestParams.size() > 0 ) {
-                    Class[] paramsClass = new Class[m_requestParams.size()];
-                    String[] params = (String[]) m_requestParams.toArray(new String[1]);
-                    for( int i = 0; i < params.length; i++ ) {
-                        paramsClass[i] = params[i].getClass();
-                    }
-
-                    this.getClass().getMethod(methodName, paramsClass ).invoke(this, m_requestParams.toArray());
+//                    Class[] paramsClass = new Class[m_requestParams.size()];
+//                    String[] params = (String[]) m_requestParams.toArray(new String[1]);
+//                    for( int i = 0; i < params.length; i++ ) {
+//                        paramsClass[i] = params[i].getClass();
+//                    }
+//
+//                    this.getClass().getMethod(methodName, paramsClass ).invoke(this, m_requestParams.toArray());
+                    Class[] paramsClass = { JSONArray.class };
+                    this.getClass().getMethod(methodName, paramsClass ).invoke(this, m_requestParams);
                 }
                 else {
                     this.getClass().getMethod(methodName ).invoke(this, m_requestParams.toArray());
@@ -170,7 +173,7 @@ public class JACQImagesRPC extends HttpServlet {
             }
             catch(Exception e ) {
                 m_response.element("result", "");
-                m_response.element("error", "Unable to call requested method: " + e.getMessage() );
+                m_response.element("error", "Unable to call requested method: " + e.getMessage() + " / " + e.toString() );
             }
         }
 
@@ -272,17 +275,24 @@ public class JACQImagesRPC extends HttpServlet {
     
     /**
      * List all import threads
+     */
+    public void listImportThreads( JSONArray params ) {
+        listImportThreads( params.getInt(0) );
+    }
+    
+    /**
+     * List all import threads
      * @param cutoff_date threads older than cutoff_date wont be returned
      */
-    public void listImportThreads( int cutoff_date ) {
+    private void listImportThreads( int cutoff_date ) {
         try {
             JSONObject threads = new JSONObject();
             
-            PreparedStatement stat = m_conn.prepareStatement("SELECT `thread_id`, `starttime` FROM `import_threads` WHERE `starttime` >= ? ORDER BY `thread_id`");
+            PreparedStatement stat = m_conn.prepareStatement("SELECT `it_id`, `starttime` FROM `import_threads` WHERE `starttime` >= ? ORDER BY `thread_id`");
             stat.setString(1, String.valueOf(cutoff_date) );
             ResultSet rs = stat.executeQuery();
             while(rs.next()) {
-                threads.put( rs.getString("thread_id"), rs.getString("starttime") );
+                threads.put( rs.getString("it_id"), rs.getString("starttime") );
             }
             rs.close();
             stat.close();
@@ -297,17 +307,24 @@ public class JACQImagesRPC extends HttpServlet {
     
     /**
      * Returns a list of log messages for a given thread-id
+     */
+    public void listImportLogs( JSONArray params ) {
+        listImportLogs( params.getInt(0) );
+    }
+    
+    /**
+     * Returns a list of log messages for a given thread-id
      * @param thread_id 
      */
-    public void listImportLogs( int thread_id ) {
+    private void listImportLogs( int it_id ) {
         try {
             JSONArray logs = new JSONArray();
             
-            PreparedStatement stat = m_conn.prepareStatement("SELECT `message` FROM `import_logs` WHERE `thread_id` >= ? ORDER BY `logtime` ASC");
-            stat.setString(1, String.valueOf(thread_id) );
+            PreparedStatement stat = m_conn.prepareStatement("SELECT `logtime`, `identifier`, `message` FROM `import_logs` WHERE `it_id` >= ? ORDER BY `logtime` ASC");
+            stat.setString(1, String.valueOf(it_id) );
             ResultSet rs = stat.executeQuery();
             while(rs.next()) {
-                logs.add( rs.getString("message") );
+                logs.add( "[" + rs.getString("logtime") + "] [" + rs.getString("identifier") + "] " + rs.getString("message") );
             }
             rs.close();
             stat.close();
@@ -322,16 +339,23 @@ public class JACQImagesRPC extends HttpServlet {
     
     /**
      * Returns a list of file identifiers for a given specimen
+     */
+    public void listSpecimenImages( JSONArray params ) {
+        listSpecimenImages( params.getInt(1), params.getString(0) );
+    }
+    
+    /**
+     * Returns a list of file identifiers for a given specimen
      * @param specimen_id Specimen ID
      * @param herbar_number Herbarnumber of specimen
      */
-    public void listSpecimenImages( int specimen_id, int herbar_number ) {
+    private void listSpecimenImages( int specimen_id, String herbar_number ) {
         try {
             JSONArray images = new JSONArray();
             
             PreparedStatement stat = m_conn.prepareStatement("SELECT `identifier` FROM `resources` WHERE `identifier` LIKE ? OR `identifier` LIKE ? ORDER BY `identifier` ASC");
-            stat.setString(1, String.valueOf(specimen_id) );
-            stat.setString(2, String.valueOf(herbar_number) );
+            stat.setString(1, "%" + String.valueOf(specimen_id) + "%" );
+            stat.setString(2, herbar_number );
             
             ResultSet rs = stat.executeQuery();
             while(rs.next()) {
@@ -364,7 +388,7 @@ public class JACQImagesRPC extends HttpServlet {
         }
         catch( Exception e ) {
             System.err.println( "Error while finishing thread:" );
-            e.getMessage();
+            e.printStackTrace();
         }
         
         m_importThread = null;
@@ -389,94 +413,91 @@ public class JACQImagesRPC extends HttpServlet {
                 PreparedStatement logStat = m_conn.prepareStatement( "INSERT INTO `import_logs` ( `it_id`, `logtime`, `identifier`, `message` ) values(?, ?, ?, ?)" );
                 while( icIt.hasNext() ) {
                     Map.Entry<String,String> entry = icIt.next();
-                    prepStat.setString(1, entry.getKey());
+                    String identifier = entry.getKey();
+                    try {
+                        prepStat.setString(1, identifier);
 
-                    // Check if the identifier already exists
-                    ResultSet rs = prepStat.executeQuery();
-                    boolean status = rs.next();
-                    rs.close();
-                    if( !status ) {
-                        String identifier = entry.getKey();
-                        
-                        // Create input and output file-names & paths
-                        String inputName = entry.getValue();
-                        String outputName = m_properties.getProperty("JACQImagesRPC.resourcesDirectory") + identifier + ".jp2";
-                        
-                        // Convert new image
-                        String[] compress = new String[]{ m_properties.getProperty("JACQImagesRPC.djatokaDirectory").concat( "bin/compress.sh" ), "-i", inputName, "-o", outputName };
-                        Process compressProc = Runtime.getRuntime().exec(compress);
-                        compressProc.waitFor();
-                        
-                        // Check if image conversion was successfull
-                        File outputFile = new File(outputName);
-                        if( outputFile.exists() ) {
-                            // Insert id into database
-                            insertStat.setString(1, identifier);
-                            insertStat.setString(2, outputName );
-                            insertStat.executeUpdate();
-                            
-                            // Move the file into the archive
-                            File archiveDir = new File( m_properties.getProperty("JACQImagesRPC.archiveDirectory") );
-                            if( archiveDir.exists() && archiveDir.isDirectory() ) {
-                                SimpleDateFormat yearFormat = new SimpleDateFormat("yyyy/yyMMdd/");
-                                Date now = new Date();
-                                
-                                // Find the correct day folder
-                                File archiveSubDir = new File(archiveDir, yearFormat.format(now));
-                                if( archiveSubDir.exists() || archiveSubDir.mkdirs() ) {
-                                    // Finally move the input file to the archive folder
-                                    File inputFile = new File(inputName);
-                                    File archiveFile = new File(archiveSubDir,inputFile.getName());
-                                    
+                        // Check if the identifier already exists
+                        ResultSet rs = prepStat.executeQuery();
+                        boolean status = rs.next();
+                        rs.close();
+                        if( !status ) {
+                            // Create input and output file-names & paths
+                            String inputName = entry.getValue();
+                            String temporaryName = m_properties.getProperty("JACQImagesRPC.resourcesDirectory") + identifier + ".tif";
+                            String outputName = m_properties.getProperty("JACQImagesRPC.resourcesDirectory") + identifier + ".jp2";
+
+                            // Watermark the image
+                            String[] watermark = new String[]{ m_properties.getProperty("JACQImagesRPC.imComposite"), "-gravity", "SouthEast", m_properties.getProperty("JACQImagesRPC.watermark"), inputName, temporaryName };
+                            Process watermarkProc = Runtime.getRuntime().exec(watermark);
+                            watermarkProc.waitFor();
+
+                            // Check if the watermarking was successfull
+                            File temporaryFile = new File(temporaryName);
+                            if( temporaryFile.exists() ) {
+                                // Convert new image
+                                String[] compress = new String[]{ m_properties.getProperty("JACQImagesRPC.djatokaDirectory").concat( "bin/compress.sh" ), "-i", temporaryName, "-o", outputName };
+                                Process compressProc = Runtime.getRuntime().exec(compress);
+                                compressProc.waitFor();
+
+                                // Check if image conversion was successfull
+                                File outputFile = new File(outputName);
+                                if( outputFile.exists() ) {
+                                    // Insert id into database
+                                    insertStat.setString(1, identifier);
+                                    insertStat.setString(2, outputName );
+                                    insertStat.executeUpdate();
+
                                     // Move the file into the archive
-                                    if( inputFile.renameTo(archiveFile) ) {
-                                        // Update archive resources list
-                                        archiveInsertStat.setString(1, identifier);
-                                        archiveInsertStat.setString(2, archiveFile.getAbsolutePath() );
-                                        archiveInsertStat.executeUpdate();
+                                    File archiveDir = new File( m_properties.getProperty("JACQImagesRPC.archiveDirectory") );
+                                    if( archiveDir.exists() && archiveDir.isDirectory() ) {
+                                        SimpleDateFormat yearFormat = new SimpleDateFormat("yyyy/yyMMdd/");
+                                        Date now = new Date();
+
+                                        // Find the correct day folder
+                                        File archiveSubDir = new File(archiveDir, yearFormat.format(now));
+                                        if( archiveSubDir.exists() || archiveSubDir.mkdirs() ) {
+                                            // Finally move the input file to the archive folder
+                                            File inputFile = new File(inputName);
+                                            File archiveFile = new File(archiveSubDir,inputFile.getName());
+
+                                            // Move the file into the archive
+                                            if( inputFile.renameTo(archiveFile) ) {
+                                                // Update archive resources list
+                                                archiveInsertStat.setString(1, identifier);
+                                                archiveInsertStat.setString(2, archiveFile.getAbsolutePath() );
+                                                archiveInsertStat.executeUpdate();
+                                            }
+                                            else {
+                                                throw new TransformException( "Unable to move file into archive" );
+                                            }
+                                        }
+                                        else {
+                                            throw new TransformException( "Unable to access archive sub-directory" );
+                                        }
                                     }
                                     else {
-                                        // Log this issue
-                                        logStat.setInt(1,it_id);
-                                        logStat.setString(2, String.valueOf(System.currentTimeMillis() / 1000) );
-                                        logStat.setString(3, identifier);
-                                        logStat.setString(4, "Unable to move file into archive" );
-                                        logStat.executeUpdate();
+                                        throw new TransformException( "Unable to access archive directory" );
                                     }
                                 }
                                 else {
-                                    // Log this issue
-                                    logStat.setInt(1,it_id);
-                                    logStat.setString(2, String.valueOf(System.currentTimeMillis() / 1000) );
-                                    logStat.setString(3, identifier);
-                                    logStat.setString(4, "Unable to access archive sub-directory" );
-                                    logStat.executeUpdate();
+                                    throw new TransformException( "Writing file for Djatoka failed" );
                                 }
                             }
                             else {
-                                // Log this issue
-                                logStat.setInt(1,it_id);
-                                logStat.setString(2, String.valueOf(System.currentTimeMillis() / 1000) );
-                                logStat.setString(3, identifier);
-                                logStat.setString(4, "Unable to access archive directory" );
-                                logStat.executeUpdate();
+                                throw new TransformException( "Watermarking image failed" );
                             }
                         }
                         else {
-                            // Log this issue
-                            logStat.setInt(1,it_id);
-                            logStat.setString(2, String.valueOf(System.currentTimeMillis() / 1000) );
-                            logStat.setString(3, identifier);
-                            logStat.setString(4, "Writing file for Djatoka failed" );
-                            logStat.executeUpdate();
+                            throw new TransformException( "Identifier already exists" );
                         }
                     }
-                    else {
+                    catch( Exception e ) {
                         // Log this issue
                         logStat.setInt(1,it_id);
                         logStat.setString(2, String.valueOf(System.currentTimeMillis() / 1000) );
-                        logStat.setString(3, entry.getKey());
-                        logStat.setString(4, "Identifier already exists" );
+                        logStat.setString(3, identifier);
+                        logStat.setString(4, e.getMessage() );
                         logStat.executeUpdate();
                     }
                 }
