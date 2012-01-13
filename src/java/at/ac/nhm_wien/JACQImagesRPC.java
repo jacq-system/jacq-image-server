@@ -70,24 +70,28 @@ public class JACQImagesRPC extends HttpServlet {
                 stat.executeUpdate( "CREATE table `resources` ( `r_id` INTEGER CONSTRAINT `r_id_pk` PRIMARY KEY AUTOINCREMENT, `identifier` TEXT CONSTRAINT `identifier_unique` UNIQUE ON CONFLICT FAIL, `imageFile` TEXT )" );
             }
             rs.close();
+            stat.close();
             // Check for import-log table
             rs = stat.executeQuery("SELECT name FROM sqlite_master WHERE name = 'import_logs' AND type = 'table'");
             if( !rs.next() ) {
                 stat.executeUpdate( "CREATE table `import_logs` ( `il_id` INTEGER CONSTRAINT `il_id_pk` PRIMARY KEY AUTOINCREMENT, `it_id` INTEGER, `logtime` INTEGER DEFAULT 0, `identifier` TEXT, `message` TEXT )" );
             }
             rs.close();
+            stat.close();
             // Check for thread table
             rs = stat.executeQuery("SELECT name FROM sqlite_master WHERE name = 'import_threads' AND type = 'table'");
             if( !rs.next() ) {
                 stat.executeUpdate( "CREATE table `import_threads` ( `it_id` INTEGER CONSTRAINT `it_id_pk` PRIMARY KEY AUTOINCREMENT, `thread_id` INTEGER, `starttime` INTEGER DEFAULT 0, `endtime` INTEGER DEFAULT 0 )" );
             }
             rs.close();
+            stat.close();
             // Check for archive resources table
             rs = stat.executeQuery("SELECT name FROM sqlite_master WHERE name = 'archive_resources' AND type = 'table'");
             if( !rs.next() ) {
                 stat.executeUpdate( "CREATE table `archive_resources` ( `ar_id` INTEGER CONSTRAINT `ar_id_pk` PRIMARY KEY AUTOINCREMENT, `identifier` TEXT, `imageFile` TEXT )" );
             }
             rs.close();
+            stat.close();
         }
         catch( Exception e ) {
             System.err.println( e.getMessage() );
@@ -203,8 +207,6 @@ public class JACQImagesRPC extends HttpServlet {
                     m_importThread.it_id = it_id_result.getInt(1);
                     m_importThread.start();
                     
-                    it_id_result.close();
-
                     m_response.element( "result", "1" );
                 }
                 // If we do not have any auto-increment value, something went terrible wrong
@@ -214,6 +216,7 @@ public class JACQImagesRPC extends HttpServlet {
                 }
 
                 // Free up statement
+                it_id_result.close();
                 prep.close();
             }
             // Something went wrong during thread startup
@@ -241,6 +244,7 @@ public class JACQImagesRPC extends HttpServlet {
                 resources.add( rs.getString("identifier") );
             }
             rs.close();
+            stat.close();
             
             m_response.put("result", resources);
         }
@@ -264,6 +268,7 @@ public class JACQImagesRPC extends HttpServlet {
                 resources.add( rs.getString("identifier") );
             }
             rs.close();
+            stat.close();
             
             m_response.put("result", resources);
         }
@@ -424,21 +429,34 @@ public class JACQImagesRPC extends HttpServlet {
                         if( !status ) {
                             // Create input and output file-names & paths
                             String inputName = entry.getValue();
-                            String temporaryName = m_properties.getProperty("JACQImagesRPC.resourcesDirectory") + identifier + ".tif";
+                            String temporaryName = m_properties.getProperty("JACQImagesRPC.tempDirectory") + identifier + ".tif";
                             String outputName = m_properties.getProperty("JACQImagesRPC.resourcesDirectory") + identifier + ".jp2";
-
-                            // Watermark the image
-                            String[] watermark = new String[]{ m_properties.getProperty("JACQImagesRPC.imComposite"), "-gravity", "SouthEast", m_properties.getProperty("JACQImagesRPC.watermark"), inputName, temporaryName };
-                            Process watermarkProc = Runtime.getRuntime().exec(watermark);
-                            watermarkProc.waitFor();
+                            
+                            // Check if we want to watermark the image
+                            if( !m_properties.getProperty("JACQImagesRPC.watermark").isEmpty() ) {
+                                // Watermark the image
+                                // Note: [0] for the input-file in order to avoid conflicts with multi-page tiffs
+                                Process watermarkProc = new ProcessBuilder( m_properties.getProperty("JACQImagesRPC.imComposite"), "-quiet", "-gravity", "SouthEast", m_properties.getProperty("JACQImagesRPC.watermark"), inputName + "[0]", temporaryName ).start();
+//                                String[] watermark = new String[]{ m_properties.getProperty("JACQImagesRPC.imComposite"), "-gravity", "SouthEast", m_properties.getProperty("JACQImagesRPC.watermark"), inputName, temporaryName };
+//                                Process watermarkProc = Runtime.getRuntime().exec(watermark);
+                                watermarkProc.waitFor();
+                            }
+                            else {
+                                // No temporary file, so use input directly
+                                temporaryName = inputName;
+                            }
 
                             // Check if the watermarking was successfull
                             File temporaryFile = new File(temporaryName);
                             if( temporaryFile.exists() ) {
                                 // Convert new image
-                                String[] compress = new String[]{ m_properties.getProperty("JACQImagesRPC.djatokaDirectory").concat( "bin/compress.sh" ), "-i", temporaryName, "-o", outputName };
-                                Process compressProc = Runtime.getRuntime().exec(compress);
+                                Process compressProc = new ProcessBuilder( m_properties.getProperty("JACQImagesRPC.djatokaDirectory").concat( "bin/compress.sh" ), "-i", temporaryName, "-o", outputName ).start();
+//                                String[] compress = new String[]{ m_properties.getProperty("JACQImagesRPC.djatokaDirectory").concat( "bin/compress.sh" ), "-i", temporaryName, "-o", outputName };
+//                                Process compressProc = Runtime.getRuntime().exec(compress);
                                 compressProc.waitFor();
+                                
+                                // Remove temporary file
+                                temporaryFile.delete();
 
                                 // Check if image conversion was successfull
                                 File outputFile = new File(outputName);
@@ -451,14 +469,16 @@ public class JACQImagesRPC extends HttpServlet {
                                     // Move the file into the archive
                                     File archiveDir = new File( m_properties.getProperty("JACQImagesRPC.archiveDirectory") );
                                     if( archiveDir.exists() && archiveDir.isDirectory() ) {
+                                        File inputFile = new File(inputName);
+
+                                        // Read file last-modified date and format it
                                         SimpleDateFormat yearFormat = new SimpleDateFormat("yyyy/yyMMdd/");
-                                        Date now = new Date();
+                                        Date now =  new Date(inputFile.lastModified());
+                                        File archiveSubDir = new File(archiveDir, yearFormat.format(now));
 
                                         // Find the correct day folder
-                                        File archiveSubDir = new File(archiveDir, yearFormat.format(now));
                                         if( archiveSubDir.exists() || archiveSubDir.mkdirs() ) {
                                             // Finally move the input file to the archive folder
-                                            File inputFile = new File(inputName);
                                             File archiveFile = new File(archiveSubDir,inputFile.getName());
 
                                             // Move the file into the archive
@@ -469,27 +489,27 @@ public class JACQImagesRPC extends HttpServlet {
                                                 archiveInsertStat.executeUpdate();
                                             }
                                             else {
-                                                throw new TransformException( "Unable to move file into archive" );
+                                                throw new TransformException( "Unable to move file into archive [" + inputFile.getPath() + " => " + archiveFile.getPath() + "]" );
                                             }
                                         }
                                         else {
-                                            throw new TransformException( "Unable to access archive sub-directory" );
+                                            throw new TransformException( "Unable to access archive sub-directory [" + archiveSubDir.getPath() + "]" );
                                         }
                                     }
                                     else {
-                                        throw new TransformException( "Unable to access archive directory" );
+                                        throw new TransformException( "Unable to access archive directory [" + archiveDir.getPath() + "]" );
                                     }
                                 }
                                 else {
-                                    throw new TransformException( "Writing file for Djatoka failed" );
+                                    throw new TransformException( "Writing file for Djatoka failed [" + outputFile.getPath() + "]" );
                                 }
                             }
                             else {
-                                throw new TransformException( "Watermarking image failed" );
+                                throw new TransformException( "Watermarking image failed [" + temporaryFile.getPath() + "]" );
                             }
                         }
                         else {
-                            throw new TransformException( "Identifier already exists" );
+                            throw new TransformException( "Identifier already exists [" + identifier + "]" );
                         }
                     }
                     catch( Exception e ) {
@@ -527,6 +547,7 @@ public class JACQImagesRPC extends HttpServlet {
             // Cleanup old entries
             Statement stat = m_conn.createStatement();
             stat.execute("DELETE FROM `resources`");
+            stat.close();
             
             // Now iterate through new list and add it to the database
             Iterator<Map.Entry<String,String>> dcIt = dirContent.entrySet().iterator();
@@ -541,6 +562,7 @@ public class JACQImagesRPC extends HttpServlet {
 
             // Execute the insert
             prepStat.executeBatch();
+            prepStat.close();
 
             // Everything went fine, report back
             m_response.element("result", "1");
