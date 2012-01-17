@@ -412,18 +412,18 @@ public class JACQImagesRPC extends HttpServlet {
                 HashMap<String,String> importContent = listDirectory(m_properties.getProperty("JACQImagesRPC.importDirectory"));
 
                 Iterator<Map.Entry<String,String>> icIt = importContent.entrySet().iterator();
-                PreparedStatement prepStat = m_conn.prepareStatement( "SELECT `identifier` FROM `resources` WHERE `identifier` = ?" );
-                PreparedStatement insertStat = m_conn.prepareStatement( "INSERT INTO `resources` ( `identifier`, `imageFile` ) values (?, ?)" );
-                PreparedStatement archiveInsertStat = m_conn.prepareStatement( "INSERT INTO `archive_resources` ( `identifier`, `imageFile` ) values (?, ?)" );
+                PreparedStatement existsStat = m_conn.prepareStatement( "SELECT `identifier` FROM `resources` WHERE `identifier` = ?" );
+                PreparedStatement resourcesStat = m_conn.prepareStatement( "INSERT INTO `resources` ( `identifier`, `imageFile` ) values (?, ?)" );
+                PreparedStatement archiveStat = m_conn.prepareStatement( "INSERT INTO `archive_resources` ( `identifier`, `imageFile` ) values (?, ?)" );
                 PreparedStatement logStat = m_conn.prepareStatement( "INSERT INTO `import_logs` ( `it_id`, `logtime`, `identifier`, `message` ) values(?, ?, ?, ?)" );
                 while( icIt.hasNext() ) {
                     Map.Entry<String,String> entry = icIt.next();
                     String identifier = entry.getKey();
                     try {
-                        prepStat.setString(1, identifier);
+                        existsStat.setString(1, identifier);
 
                         // Check if the identifier already exists
-                        ResultSet rs = prepStat.executeQuery();
+                        ResultSet rs = existsStat.executeQuery();
                         boolean status = rs.next();
                         rs.close();
                         if( !status ) {
@@ -437,8 +437,6 @@ public class JACQImagesRPC extends HttpServlet {
                                 // Watermark the image
                                 // Note: [0] for the input-file in order to avoid conflicts with multi-page tiffs
                                 Process watermarkProc = new ProcessBuilder( m_properties.getProperty("JACQImagesRPC.imComposite"), "-quiet", "-gravity", "SouthEast", m_properties.getProperty("JACQImagesRPC.watermark"), inputName + "[0]", temporaryName ).start();
-//                                String[] watermark = new String[]{ m_properties.getProperty("JACQImagesRPC.imComposite"), "-gravity", "SouthEast", m_properties.getProperty("JACQImagesRPC.watermark"), inputName, temporaryName };
-//                                Process watermarkProc = Runtime.getRuntime().exec(watermark);
                                 watermarkProc.waitFor();
                             }
                             else {
@@ -451,8 +449,6 @@ public class JACQImagesRPC extends HttpServlet {
                             if( temporaryFile.exists() ) {
                                 // Convert new image
                                 Process compressProc = new ProcessBuilder( m_properties.getProperty("JACQImagesRPC.djatokaDirectory").concat( "bin/compress.sh" ), "-i", temporaryName, "-o", outputName ).start();
-//                                String[] compress = new String[]{ m_properties.getProperty("JACQImagesRPC.djatokaDirectory").concat( "bin/compress.sh" ), "-i", temporaryName, "-o", outputName };
-//                                Process compressProc = Runtime.getRuntime().exec(compress);
                                 compressProc.waitFor();
                                 
                                 // Remove temporary file
@@ -462,9 +458,9 @@ public class JACQImagesRPC extends HttpServlet {
                                 File outputFile = new File(outputName);
                                 if( outputFile.exists() ) {
                                     // Insert id into database
-                                    insertStat.setString(1, identifier);
-                                    insertStat.setString(2, outputName );
-                                    insertStat.executeUpdate();
+                                    resourcesStat.setString(1, identifier);
+                                    resourcesStat.setString(2, outputName );
+                                    resourcesStat.executeUpdate();
 
                                     // Move the file into the archive
                                     File archiveDir = new File( m_properties.getProperty("JACQImagesRPC.archiveDirectory") );
@@ -480,16 +476,32 @@ public class JACQImagesRPC extends HttpServlet {
                                         if( archiveSubDir.exists() || archiveSubDir.mkdirs() ) {
                                             // Finally move the input file to the archive folder
                                             File archiveFile = new File(archiveSubDir,inputFile.getName());
-
-                                            // Move the file into the archive
-                                            if( inputFile.renameTo(archiveFile) ) {
-                                                // Update archive resources list
-                                                archiveInsertStat.setString(1, identifier);
-                                                archiveInsertStat.setString(2, archiveFile.getAbsolutePath() );
-                                                archiveInsertStat.executeUpdate();
+                                            
+                                            // Check if destination does not exist
+                                            if( !archiveFile.exists() && archiveFile.getParentFile().canWrite() ) {
+                                                // Copy the file into the archive
+                                                Process cpProc = new ProcessBuilder( m_properties.getProperty("JACQImagesRPC.cpCommand"), m_properties.getProperty("JACQImagesRPC.cpCommandParameter"), inputFile.getPath(), archiveFile.getPath() ).start();
+                                                if( cpProc.waitFor() == 0 ) {
+                                                    // Compare input and archive file
+                                                    if( inputFile.length() == archiveFile.length() ) {
+                                                        // Update archive resources list
+                                                        archiveStat.setString(1, identifier);
+                                                        archiveStat.setString(2, archiveFile.getAbsolutePath() );
+                                                        archiveStat.executeUpdate();
+                                                        
+                                                        // Remove input file
+                                                        inputFile.delete();
+                                                    }
+                                                    else {
+                                                        throw new TransformException( "Validity check of file failed [" + inputFile.getPath() + " => " + archiveFile.getPath() + "]" );
+                                                    }
+                                                }
+                                                else {
+                                                    throw new TransformException( "Unable to move file into archive [" + inputFile.getPath() + " => " + archiveFile.getPath() + "]" );
+                                                }
                                             }
                                             else {
-                                                throw new TransformException( "Unable to move file into archive [" + inputFile.getPath() + " => " + archiveFile.getPath() + "]" );
+                                                throw new TransformException( "File exists or cannot write archive path [" + archiveFile.getPath() + "]" );
                                             }
                                         }
                                         else {
@@ -522,9 +534,9 @@ public class JACQImagesRPC extends HttpServlet {
                     }
                 }
                 // Release prepared statements
-                prepStat.close();
-                insertStat.close();
-                archiveInsertStat.close();
+                existsStat.close();
+                resourcesStat.close();
+                archiveStat.close();
                 logStat.close();
             }
             catch( Exception e ) {
