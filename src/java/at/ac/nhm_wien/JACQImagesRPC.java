@@ -405,6 +405,37 @@ public class JACQImagesRPC extends HttpServlet {
     private class ImageImportThread extends Thread {
         public int it_id = 0;
         
+        /**
+         * Small helper function which creates an output directory according to our formatting rules
+         * @param p_baseDir Base dir for directory creation
+         * @param p_modificationDate Modification time which is used for directory naming
+         * @return String Returns the name of the output directory on success (with trailing slash)
+         * @throws TransformException 
+         */
+        private String createDirectory( String p_baseDir, long p_modificationDate ) throws TransformException {
+            File baseDir = new File(p_baseDir);
+            if( baseDir.exists() && baseDir.isDirectory() && baseDir.canWrite() ) {
+                // Create formatted output directory
+                SimpleDateFormat yearFormat = new SimpleDateFormat("yyyy/yyMMdd/");
+                Date now =  new Date(p_modificationDate);
+                File subDir = new File(baseDir, yearFormat.format(now));
+                
+                // Check if subDir already exists or try to create it
+                if( subDir.exists() || subDir.mkdirs() ) {
+                    return subDir.getPath() + "/";
+                }
+                else {
+                    throw new TransformException( "Unable to access sub-dir [" + subDir.getPath() + "]" );
+                }
+            }
+            else {
+                throw new TransformException( "Unable to access base-dir [" + baseDir.getPath() + "]" );
+            }
+        }
+        
+        /**
+         * Import images waiting in import directory
+         */
         @Override
         public void run() {
             try {
@@ -430,7 +461,6 @@ public class JACQImagesRPC extends HttpServlet {
                             // Create input and output file-names & paths
                             String inputName = entry.getValue();
                             String temporaryName = m_properties.getProperty("JACQImagesRPC.tempDirectory") + identifier + ".tif";
-                            String outputName = m_properties.getProperty("JACQImagesRPC.resourcesDirectory") + identifier + ".jp2";
                             
                             // Check if we want to watermark the image
                             if( !m_properties.getProperty("JACQImagesRPC.watermark").isEmpty() ) {
@@ -447,8 +477,12 @@ public class JACQImagesRPC extends HttpServlet {
                             // Check if the watermarking was successfull
                             File temporaryFile = new File(temporaryName);
                             if( temporaryFile.exists() ) {
+                                // Create output directory for djatoka
+                                File inputFile = new File(inputName);
+                                String outputName = createDirectory(m_properties.getProperty("JACQImagesRPC.resourcesDirectory"), inputFile.lastModified()) + identifier + ".jp2";
+                                
                                 // Convert new image
-                                Process compressProc = new ProcessBuilder( m_properties.getProperty("JACQImagesRPC.djatokaDirectory").concat( "bin/compress.sh" ), "-i", temporaryName, "-o", outputName ).start();
+                                Process compressProc = new ProcessBuilder( m_properties.getProperty("JACQImagesRPC.dCompress"), "-i", temporaryName, "-o", outputName ).start();
                                 compressProc.waitFor();
                                 
                                 // Remove temporary file
@@ -461,55 +495,35 @@ public class JACQImagesRPC extends HttpServlet {
                                     resourcesStat.setString(1, identifier);
                                     resourcesStat.setString(2, outputName );
                                     resourcesStat.executeUpdate();
+                                    
+                                    // Create archive directory
+                                    File archiveFile = new File( createDirectory(m_properties.getProperty("JACQImagesRPC.archiveDirectory"), inputFile.lastModified() ) + inputFile.getName() );
 
-                                    // Move the file into the archive
-                                    File archiveDir = new File( m_properties.getProperty("JACQImagesRPC.archiveDirectory") );
-                                    if( archiveDir.exists() && archiveDir.isDirectory() ) {
-                                        File inputFile = new File(inputName);
+                                    // Check if destination does not exist
+                                    if( !archiveFile.exists() && archiveFile.getParentFile().canWrite() ) {
+                                        // Copy the file into the archive
+                                        Process cpProc = new ProcessBuilder( m_properties.getProperty("JACQImagesRPC.cpCommand"), m_properties.getProperty("JACQImagesRPC.cpCommandParameter"), inputFile.getPath(), archiveFile.getPath() ).start();
+                                        if( cpProc.waitFor() == 0 ) {
+                                            // Compare input and archive file
+                                            if( inputFile.length() == archiveFile.length() ) {
+                                                // Update archive resources list
+                                                archiveStat.setString(1, identifier);
+                                                archiveStat.setString(2, archiveFile.getAbsolutePath() );
+                                                archiveStat.executeUpdate();
 
-                                        // Read file last-modified date and format it
-                                        SimpleDateFormat yearFormat = new SimpleDateFormat("yyyy/yyMMdd/");
-                                        Date now =  new Date(inputFile.lastModified());
-                                        File archiveSubDir = new File(archiveDir, yearFormat.format(now));
-
-                                        // Find the correct day folder
-                                        if( archiveSubDir.exists() || archiveSubDir.mkdirs() ) {
-                                            // Finally move the input file to the archive folder
-                                            File archiveFile = new File(archiveSubDir,inputFile.getName());
-                                            
-                                            // Check if destination does not exist
-                                            if( !archiveFile.exists() && archiveFile.getParentFile().canWrite() ) {
-                                                // Copy the file into the archive
-                                                Process cpProc = new ProcessBuilder( m_properties.getProperty("JACQImagesRPC.cpCommand"), m_properties.getProperty("JACQImagesRPC.cpCommandParameter"), inputFile.getPath(), archiveFile.getPath() ).start();
-                                                if( cpProc.waitFor() == 0 ) {
-                                                    // Compare input and archive file
-                                                    if( inputFile.length() == archiveFile.length() ) {
-                                                        // Update archive resources list
-                                                        archiveStat.setString(1, identifier);
-                                                        archiveStat.setString(2, archiveFile.getAbsolutePath() );
-                                                        archiveStat.executeUpdate();
-                                                        
-                                                        // Remove input file
-                                                        inputFile.delete();
-                                                    }
-                                                    else {
-                                                        throw new TransformException( "Validity check of file failed [" + inputFile.getPath() + " => " + archiveFile.getPath() + "]" );
-                                                    }
-                                                }
-                                                else {
-                                                    throw new TransformException( "Unable to move file into archive [" + inputFile.getPath() + " => " + archiveFile.getPath() + "]" );
-                                                }
+                                                // Remove input file
+                                                inputFile.delete();
                                             }
                                             else {
-                                                throw new TransformException( "File exists or cannot write archive path [" + archiveFile.getPath() + "]" );
+                                                throw new TransformException( "Validity check of file failed [" + inputFile.getPath() + " => " + archiveFile.getPath() + "]" );
                                             }
                                         }
                                         else {
-                                            throw new TransformException( "Unable to access archive sub-directory [" + archiveSubDir.getPath() + "]" );
+                                            throw new TransformException( "Unable to move file into archive [" + inputFile.getPath() + " => " + archiveFile.getPath() + "]" );
                                         }
                                     }
                                     else {
-                                        throw new TransformException( "Unable to access archive directory [" + archiveDir.getPath() + "]" );
+                                        throw new TransformException( "File exists or cannot write archive path [" + archiveFile.getPath() + "]" );
                                     }
                                 }
                                 else {
