@@ -99,6 +99,18 @@ public class JACQImagesRPC extends HttpServlet {
     }
 
     @Override
+    public void destroy() {
+        try {
+            m_conn.close();
+        }
+        catch( Exception e ) {
+            System.err.println( "Unable to close connection to SQLite: " + e.getMessage() );
+        }
+        
+        super.destroy();
+    }
+
+    @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
         if( req.getParameter("request") != null ) {
             resp.getOutputStream().print(handleRequest(JSONObject.fromObject(req.getParameter("request"))));
@@ -222,7 +234,7 @@ public class JACQImagesRPC extends HttpServlet {
             // Something went wrong during thread startup
             catch( Exception e ) {
                 m_response.element( "result", "" );
-                m_response.element( "error", "Error while trying to start thread!" );
+                m_response.element( "error", "Error while trying to start thread: " + e.getMessage() );
             }
         }
         else {
@@ -443,10 +455,7 @@ public class JACQImagesRPC extends HttpServlet {
                 HashMap<String,String> importContent = listDirectory(m_properties.getProperty("JACQImagesRPC.importDirectory"));
 
                 Iterator<Map.Entry<String,String>> icIt = importContent.entrySet().iterator();
-                PreparedStatement existsStat = m_conn.prepareStatement( "SELECT `identifier` FROM `resources` WHERE `identifier` = ?" );
-                PreparedStatement resourcesStat = m_conn.prepareStatement( "INSERT INTO `resources` ( `identifier`, `imageFile` ) values (?, ?)" );
-                PreparedStatement archiveStat = m_conn.prepareStatement( "INSERT INTO `archive_resources` ( `identifier`, `imageFile` ) values (?, ?)" );
-                PreparedStatement logStat = m_conn.prepareStatement( "INSERT INTO `import_logs` ( `it_id`, `logtime`, `identifier`, `message` ) values(?, ?, ?, ?)" );
+                PreparedStatement existsStat = m_conn.prepareStatement( "SELECT `identifier` FROM `archive_resources` WHERE `identifier` = ?" );
                 while( icIt.hasNext() ) {
                     Map.Entry<String,String> entry = icIt.next();
                     String identifier = entry.getKey();
@@ -492,9 +501,11 @@ public class JACQImagesRPC extends HttpServlet {
                                 File outputFile = new File(outputName);
                                 if( outputFile.exists() ) {
                                     // Insert id into database
+                                    PreparedStatement resourcesStat = m_conn.prepareStatement( "INSERT INTO `resources` ( `identifier`, `imageFile` ) values (?, ?)" );
                                     resourcesStat.setString(1, identifier);
                                     resourcesStat.setString(2, outputName );
                                     resourcesStat.executeUpdate();
+                                    resourcesStat.close();
                                     
                                     // Create archive directory
                                     File archiveFile = new File( createDirectory(m_properties.getProperty("JACQImagesRPC.archiveDirectory"), inputFile.lastModified() ) + inputFile.getName() );
@@ -507,9 +518,11 @@ public class JACQImagesRPC extends HttpServlet {
                                             // Compare input and archive file
                                             if( inputFile.length() == archiveFile.length() ) {
                                                 // Update archive resources list
+                                                PreparedStatement archiveStat = m_conn.prepareStatement( "INSERT INTO `archive_resources` ( `identifier`, `imageFile` ) values (?, ?)" );
                                                 archiveStat.setString(1, identifier);
                                                 archiveStat.setString(2, archiveFile.getAbsolutePath() );
                                                 archiveStat.executeUpdate();
+                                                archiveStat.close();
 
                                                 // Remove input file
                                                 inputFile.delete();
@@ -540,18 +553,17 @@ public class JACQImagesRPC extends HttpServlet {
                     }
                     catch( Exception e ) {
                         // Log this issue
+                        PreparedStatement logStat = m_conn.prepareStatement( "INSERT INTO `import_logs` ( `it_id`, `logtime`, `identifier`, `message` ) values(?, ?, ?, ?)" );
                         logStat.setInt(1,it_id);
                         logStat.setString(2, String.valueOf(System.currentTimeMillis() / 1000) );
                         logStat.setString(3, identifier);
                         logStat.setString(4, e.getMessage() );
                         logStat.executeUpdate();
+                        logStat.close();
                     }
                 }
                 // Release prepared statements
                 existsStat.close();
-                resourcesStat.close();
-                archiveStat.close();
-                logStat.close();
             }
             catch( Exception e ) {
                 System.err.println( e.toString() );
