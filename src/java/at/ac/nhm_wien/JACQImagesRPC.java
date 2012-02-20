@@ -2,7 +2,7 @@ package at.ac.nhm_wien;
 
 /*
 JACQ
-Copyright (C) 2011 Naturhistorisches Museum Wien
+Copyright (C) 2011-2012 Naturhistorisches Museum Wien
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -18,26 +18,18 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.util.Iterator;
+import java.io.*;
+import java.sql.*;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.*;
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
+import javax.xml.crypto.dsig.TransformException;
 import net.sf.json.JSONArray;
 import net.sf.json.JSONObject;
-import java.util.Map;
-
-import java.sql.*;
-import java.text.SimpleDateFormat;
-import java.util.HashMap;
-import java.util.Properties;
-import java.util.Date;
-import javax.xml.crypto.dsig.TransformException;
 
 /**
  *
