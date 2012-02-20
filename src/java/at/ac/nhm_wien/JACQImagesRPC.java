@@ -477,6 +477,10 @@ public class JACQImagesRPC extends HttpServlet {
                                 // Note: [0] for the input-file in order to avoid conflicts with multi-page tiffs
                                 Process watermarkProc = new ProcessBuilder( m_properties.getProperty("JACQImagesRPC.imComposite"), "-quiet", "-gravity", "SouthEast", m_properties.getProperty("JACQImagesRPC.watermark"), inputName + "[0]", temporaryName ).start();
                                 watermarkProc.waitFor();
+                                watermarkProc.getErrorStream().close();
+                                watermarkProc.getInputStream().close();
+                                watermarkProc.getOutputStream().close();
+                                watermarkProc.destroy();
                             }
                             else {
                                 // No temporary file, so use input directly
@@ -493,6 +497,10 @@ public class JACQImagesRPC extends HttpServlet {
                                 // Convert new image
                                 Process compressProc = new ProcessBuilder( m_properties.getProperty("JACQImagesRPC.dCompress"), "-i", temporaryName, "-o", outputName ).start();
                                 compressProc.waitFor();
+                                compressProc.getErrorStream().close();
+                                compressProc.getInputStream().close();
+                                compressProc.getOutputStream().close();
+                                compressProc.destroy();
                                 
                                 // Remove temporary file
                                 temporaryFile.delete();
@@ -514,7 +522,12 @@ public class JACQImagesRPC extends HttpServlet {
                                     if( !archiveFile.exists() && archiveFile.getParentFile().canWrite() ) {
                                         // Copy the file into the archive
                                         Process cpProc = new ProcessBuilder( m_properties.getProperty("JACQImagesRPC.cpCommand"), m_properties.getProperty("JACQImagesRPC.cpCommandParameter"), inputFile.getPath(), archiveFile.getPath() ).start();
-                                        if( cpProc.waitFor() == 0 ) {
+                                        int exitCode = cpProc.waitFor();
+                                        cpProc.getErrorStream().close();
+                                        cpProc.getInputStream().close();
+                                        cpProc.getOutputStream().close();
+                                        cpProc.destroy();
+                                        if( exitCode == 0 ) {
                                             // Compare input and archive file
                                             if( inputFile.length() == archiveFile.length() ) {
                                                 // Update archive resources list
