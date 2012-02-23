@@ -80,7 +80,7 @@ public class JACQImagesRPC extends HttpServlet {
             // Check for archive resources table
             rs = stat.executeQuery("SELECT name FROM sqlite_master WHERE name = 'archive_resources' AND type = 'table'");
             if( !rs.next() ) {
-                stat.executeUpdate( "CREATE table `archive_resources` ( `ar_id` INTEGER CONSTRAINT `ar_id_pk` PRIMARY KEY AUTOINCREMENT, `identifier` TEXT, `imageFile` TEXT )" );
+                stat.executeUpdate( "CREATE table `archive_resources` ( `ar_id` INTEGER CONSTRAINT `ar_id_pk` PRIMARY KEY AUTOINCREMENT, `identifier` TEXT, `imageFile` TEXT, `lastModified` INTEGER DEFAULT 0, `size` INTEGER DEFAULT 0 )" );
             }
             rs.close();
             stat.close();
@@ -211,7 +211,7 @@ public class JACQImagesRPC extends HttpServlet {
                     m_importThread.it_id = it_id_result.getInt(1);
                     m_importThread.start();
                     
-                    m_response.element( "result", "1" );
+                    m_response.element( "result", m_importThread.it_id );
                 }
                 // If we do not have any auto-increment value, something went terrible wrong
                 else {
@@ -523,9 +523,11 @@ public class JACQImagesRPC extends HttpServlet {
                                             // Compare input and archive file
                                             if( inputFile.length() == archiveFile.length() ) {
                                                 // Update archive resources list
-                                                PreparedStatement archiveStat = m_conn.prepareStatement( "INSERT INTO `archive_resources` ( `identifier`, `imageFile` ) values (?, ?)" );
+                                                PreparedStatement archiveStat = m_conn.prepareStatement( "INSERT INTO `archive_resources` ( `identifier`, `imageFile`, `lastModified`, `size` ) values (?, ?, ?, ?)" );
                                                 archiveStat.setString(1, identifier);
-                                                archiveStat.setString(2, archiveFile.getAbsolutePath() );
+                                                archiveStat.setString(2, archiveFile.getAbsolutePath());
+                                                archiveStat.setLong(3, inputFile.lastModified() / 1000);
+                                                archiveStat.setLong(4, inputFile.length());
                                                 archiveStat.executeUpdate();
                                                 archiveStat.close();
 
