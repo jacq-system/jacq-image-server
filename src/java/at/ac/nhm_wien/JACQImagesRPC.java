@@ -448,9 +448,12 @@ public class JACQImagesRPC extends HttpServlet {
 
                 Iterator<Map.Entry<String,String>> icIt = importContent.entrySet().iterator();
                 PreparedStatement existsStat = m_conn.prepareStatement( "SELECT `identifier` FROM `archive_resources` WHERE `identifier` = ?" );
+                // Disable auto-commit
+                m_conn.setAutoCommit(false);
                 while( icIt.hasNext() ) {
                     Map.Entry<String,String> entry = icIt.next();
                     String identifier = entry.getKey();
+                    String inputName = entry.getValue();
                     try {
                         existsStat.setString(1, identifier);
 
@@ -459,8 +462,7 @@ public class JACQImagesRPC extends HttpServlet {
                         boolean status = rs.next();
                         rs.close();
                         if( !status ) {
-                            // Create input and output file-names & paths
-                            String inputName = entry.getValue();
+                            // Create output file-name & path
                             String temporaryName = m_properties.getProperty("JACQImagesRPC.tempDirectory") + identifier + ".tif";
                             
                             // Check if we want to watermark the image
@@ -530,6 +532,9 @@ public class JACQImagesRPC extends HttpServlet {
                                                 archiveStat.setLong(4, inputFile.length());
                                                 archiveStat.executeUpdate();
                                                 archiveStat.close();
+                                                
+                                                // Finally make sure our new data is written to disk
+                                                m_conn.commit();
 
                                                 // Remove input file
                                                 inputFile.delete();
@@ -555,10 +560,13 @@ public class JACQImagesRPC extends HttpServlet {
                             }
                         }
                         else {
-                            throw new TransformException( "Identifier already exists [" + identifier + "]" );
+                            throw new TransformException( "Import of [" + inputName + "] failed. Identifier already exists [" + identifier + "]" );
                         }
                     }
                     catch( Exception e ) {
+                        // Something went wrong, rollback
+                        m_conn.rollback();
+                        
                         // Log this issue
                         PreparedStatement logStat = m_conn.prepareStatement( "INSERT INTO `import_logs` ( `it_id`, `logtime`, `identifier`, `message` ) values(?, ?, ?, ?)" );
                         logStat.setInt(1,it_id);
@@ -567,10 +575,15 @@ public class JACQImagesRPC extends HttpServlet {
                         logStat.setString(4, e.getMessage() );
                         logStat.executeUpdate();
                         logStat.close();
+                        
+                        // Commit the log message
+                        m_conn.commit();
                     }
                 }
                 // Release prepared statements
                 existsStat.close();
+                // Enable auto-commit
+                m_conn.setAutoCommit(true);
             }
             catch( Exception e ) {
                 System.err.println( e.toString() );
