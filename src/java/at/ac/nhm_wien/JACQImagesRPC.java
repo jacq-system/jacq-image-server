@@ -402,41 +402,13 @@ public class JACQImagesRPC extends HttpServlet {
         
         m_importThread = null;
     }
-
+    
     /**
      * Import thread which imports newly added images
      */
     private class ImageImportThread extends Thread {
         public int it_id = 0;
-        
-        /**
-         * Small helper function which creates an output directory according to our formatting rules
-         * @param p_baseDir Base dir for directory creation
-         * @param p_modificationDate Modification time which is used for directory naming
-         * @return String Returns the name of the output directory on success (with trailing slash)
-         * @throws TransformException 
-         */
-        private String createDirectory( String p_baseDir, long p_modificationDate ) throws TransformException {
-            File baseDir = new File(p_baseDir);
-            if( baseDir.exists() && baseDir.isDirectory() && baseDir.canWrite() ) {
-                // Create formatted output directory
-                SimpleDateFormat yearFormat = new SimpleDateFormat("yyyy/yyMMdd/");
-                Date now =  new Date(p_modificationDate);
-                File subDir = new File(baseDir, yearFormat.format(now));
                 
-                // Check if subDir already exists or try to create it
-                if( subDir.exists() || subDir.mkdirs() ) {
-                    return subDir.getPath() + "/";
-                }
-                else {
-                    throw new TransformException( "Unable to access sub-dir [" + subDir.getPath() + "]" );
-                }
-            }
-            else {
-                throw new TransformException( "Unable to access base-dir [" + baseDir.getPath() + "]" );
-            }
-        }
-        
         /**
          * Import images waiting in import directory
          */
@@ -486,7 +458,7 @@ public class JACQImagesRPC extends HttpServlet {
                             if( temporaryFile.exists() ) {
                                 // Create output directory for djatoka
                                 File inputFile = new File(inputName);
-                                String outputName = createDirectory(m_properties.getProperty("JACQImagesRPC.resourcesDirectory"), inputFile.lastModified()) + identifier + ".jp2";
+                                String outputName = Utilities.createDirectory(m_properties.getProperty("JACQImagesRPC.resourcesDirectory"), inputFile.lastModified()) + identifier + ".jp2";
                                 
                                 // Convert new image
                                 Process compressProc = new ProcessBuilder( m_properties.getProperty("JACQImagesRPC.dCompress"), "-i", temporaryName, "-o", outputName ).start();
@@ -510,7 +482,7 @@ public class JACQImagesRPC extends HttpServlet {
                                     resourcesStat.close();
                                     
                                     // Create archive directory
-                                    File archiveFile = new File( createDirectory(m_properties.getProperty("JACQImagesRPC.archiveDirectory"), inputFile.lastModified() ) + inputFile.getName() );
+                                    File archiveFile = new File( Utilities.createDirectory(m_properties.getProperty("JACQImagesRPC.archiveDirectory"), inputFile.lastModified() ) + inputFile.getName() );
 
                                     // Check if destination does not exist
                                     if( !archiveFile.exists() && archiveFile.getParentFile().canWrite() ) {
