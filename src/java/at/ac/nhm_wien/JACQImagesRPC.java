@@ -80,7 +80,7 @@ public class JACQImagesRPC extends HttpServlet {
             // Check for archive resources table
             rs = stat.executeQuery("SELECT name FROM sqlite_master WHERE name = 'archive_resources' AND type = 'table'");
             if( !rs.next() ) {
-                stat.executeUpdate( "CREATE table `archive_resources` ( `ar_id` INTEGER CONSTRAINT `ar_id_pk` PRIMARY KEY AUTOINCREMENT, `identifier` TEXT, `imageFile` TEXT, `lastModified` INTEGER DEFAULT 0, `size` INTEGER DEFAULT 0 )" );
+                stat.executeUpdate( "CREATE table `archive_resources` ( `ar_id` INTEGER CONSTRAINT `ar_id_pk` PRIMARY KEY AUTOINCREMENT, `identifier` TEXT, `imageFile` TEXT, `lastModified` INTEGER DEFAULT 0, `size` INTEGER DEFAULT 0, `obsolete` INTEGER DEFAULT 0, `it_id` INTEGER )" );
             }
             rs.close();
             stat.close();
@@ -525,11 +525,12 @@ public class JACQImagesRPC extends HttpServlet {
                                             // Compare input and archive file
                                             if( inputFile.length() == archiveFile.length() ) {
                                                 // Update archive resources list
-                                                PreparedStatement archiveStat = m_conn.prepareStatement( "INSERT INTO `archive_resources` ( `identifier`, `imageFile`, `lastModified`, `size` ) values (?, ?, ?, ?)" );
+                                                PreparedStatement archiveStat = m_conn.prepareStatement( "INSERT INTO `archive_resources` ( `identifier`, `imageFile`, `lastModified`, `size`, `it_id` ) values (?, ?, ?, ?, ?)" );
                                                 archiveStat.setString(1, identifier);
                                                 archiveStat.setString(2, archiveFile.getAbsolutePath());
                                                 archiveStat.setLong(3, inputFile.lastModified() / 1000);
                                                 archiveStat.setLong(4, inputFile.length());
+                                                archiveStat.setInt(5, it_id);
                                                 archiveStat.executeUpdate();
                                                 archiveStat.close();
                                                 
