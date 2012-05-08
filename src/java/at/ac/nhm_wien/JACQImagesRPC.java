@@ -20,8 +20,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import java.io.*;
 import java.sql.*;
-import java.text.SimpleDateFormat;
-import java.util.Date;
 import java.util.*;
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServlet;
@@ -59,28 +57,35 @@ public class JACQImagesRPC extends HttpServlet {
             // Check for resources table
             ResultSet rs = stat.executeQuery("SELECT name FROM sqlite_master WHERE name = 'resources' AND type = 'table'");
             if( !rs.next() ) {
-                stat.executeUpdate( "CREATE table `resources` ( `r_id` INTEGER CONSTRAINT `r_id_pk` PRIMARY KEY AUTOINCREMENT, `identifier` TEXT CONSTRAINT `identifier_unique` UNIQUE ON CONFLICT FAIL, `imageFile` TEXT )" );
+                stat.executeUpdate("CREATE table `resources` ( `r_id` INTEGER CONSTRAINT `r_id_pk` PRIMARY KEY AUTOINCREMENT, `identifier` TEXT CONSTRAINT `identifier_unique` UNIQUE ON CONFLICT FAIL, `imageFile` TEXT )" );
             }
             rs.close();
             stat.close();
             // Check for import-log table
             rs = stat.executeQuery("SELECT name FROM sqlite_master WHERE name = 'import_logs' AND type = 'table'");
             if( !rs.next() ) {
-                stat.executeUpdate( "CREATE table `import_logs` ( `il_id` INTEGER CONSTRAINT `il_id_pk` PRIMARY KEY AUTOINCREMENT, `it_id` INTEGER, `logtime` INTEGER DEFAULT 0, `identifier` TEXT, `message` TEXT )" );
+                stat.executeUpdate("CREATE table `import_logs` ( `il_id` INTEGER CONSTRAINT `il_id_pk` PRIMARY KEY AUTOINCREMENT, `it_id` INTEGER, `logtime` INTEGER DEFAULT 0, `identifier` TEXT, `message` TEXT )" );
             }
             rs.close();
             stat.close();
             // Check for thread table
             rs = stat.executeQuery("SELECT name FROM sqlite_master WHERE name = 'import_threads' AND type = 'table'");
             if( !rs.next() ) {
-                stat.executeUpdate( "CREATE table `import_threads` ( `it_id` INTEGER CONSTRAINT `it_id_pk` PRIMARY KEY AUTOINCREMENT, `thread_id` INTEGER, `starttime` INTEGER DEFAULT 0, `endtime` INTEGER DEFAULT 0 )" );
+                stat.executeUpdate("CREATE table `import_threads` ( `it_id` INTEGER CONSTRAINT `it_id_pk` PRIMARY KEY AUTOINCREMENT, `thread_id` INTEGER, `starttime` INTEGER DEFAULT 0, `endtime` INTEGER DEFAULT 0 )" );
             }
             rs.close();
             stat.close();
             // Check for archive resources table
             rs = stat.executeQuery("SELECT name FROM sqlite_master WHERE name = 'archive_resources' AND type = 'table'");
             if( !rs.next() ) {
-                stat.executeUpdate( "CREATE table `archive_resources` ( `ar_id` INTEGER CONSTRAINT `ar_id_pk` PRIMARY KEY AUTOINCREMENT, `identifier` TEXT, `imageFile` TEXT, `lastModified` INTEGER DEFAULT 0, `size` INTEGER DEFAULT 0, `obsolete` INTEGER DEFAULT 0, `it_id` INTEGER )" );
+                stat.executeUpdate("CREATE table `archive_resources` ( `ar_id` INTEGER CONSTRAINT `ar_id_pk` PRIMARY KEY AUTOINCREMENT, `identifier` TEXT, `imageFile` TEXT, `lastModified` INTEGER DEFAULT 0, `size` INTEGER DEFAULT 0, `obsolete` INTEGER DEFAULT 0, `it_id` INTEGER )" );
+            }
+            rs.close();
+            stat.close();
+            // Check for import queue table
+            rs = stat.executeQuery("SELECT name FROM sqlite_master WHERE name = 'import_queue' AND type = 'table'");
+            if( !rs.next() ) {
+                stat.executeUpdate("CREATE table `import_queue` ( `iq_id` INTEGER CONSTRAINT `iq_id_pk` PRIMARY KEY AUTOINCREMENT, `identifier` TEXT, `filePath` TEXT )" );
             }
             rs.close();
             stat.close();
@@ -181,7 +186,7 @@ public class JACQImagesRPC extends HttpServlet {
             }
             catch(Exception e ) {
                 m_response.element("result", "");
-                m_response.element("error", "Unable to call requested method: " + e.getMessage() + " / " + e.toString() );
+                m_response.element("error", "Unable to call requested method ('" + methodName + "'): " + e.getMessage() + " / " + e.toString() );
             }
         }
 
@@ -350,7 +355,7 @@ public class JACQImagesRPC extends HttpServlet {
      * Returns a list of file identifiers for a given specimen
      */
     public void listSpecimenImages( JSONArray params ) {
-        listSpecimenImages( params.getInt(1), params.getString(0) );
+        listSpecimenImages( params.getInt(0), params.getString(1) );
     }
     
     /**
@@ -362,12 +367,18 @@ public class JACQImagesRPC extends HttpServlet {
         try {
             JSONArray images = new JSONArray();
             
-            PreparedStatement stat = m_conn.prepareStatement("SELECT `identifier` FROM `resources` WHERE `identifier` LIKE ? OR `identifier` LIKE ? ORDER BY `identifier` ASC");
-            stat.setString(1, "%" + String.valueOf(specimen_id) + "%" );
-            stat.setString(2, herbar_number );
+            System.err.println( "Searching for: " + specimen_id + " / " + herbar_number );
+            
+            // Try to find all possible variants of this image
+            PreparedStatement stat = m_conn.prepareStatement("SELECT `identifier` FROM `resources` WHERE `identifier` LIKE ? OR `identifier` LIKE ? OR `identifier` LIKE ? OR `identifier` LIKE ? ORDER BY `identifier` ASC");
+            stat.setString(1, "tab_" + String.valueOf(specimen_id));
+            stat.setString(2, "obs_" + String.valueOf(specimen_id));
+            stat.setString(3, herbar_number );
+            stat.setString(4, herbar_number + "_%" );
             
             ResultSet rs = stat.executeQuery();
             while(rs.next()) {
+                System.err.println( "Adding result" );
                 images.add( rs.getString("identifier") );
             }
             rs.close();
@@ -415,22 +426,68 @@ public class JACQImagesRPC extends HttpServlet {
         @Override
         public void run() {
             try {
-                // Get a list of images to import
-                HashMap<String,String> importContent = listDirectory(m_properties.getProperty("JACQImagesRPC.importDirectory"));
-
-                Iterator<Map.Entry<String,String>> icIt = importContent.entrySet().iterator();
-                PreparedStatement existsStat = m_conn.prepareStatement( "SELECT `identifier` FROM `archive_resources` WHERE `identifier` = ?" );
-                // Disable auto-commit
+                int iqCount = 0;    // Import-Queue count
+                
+                // Disable auto-commit during imports
                 m_conn.setAutoCommit(false);
-                while( icIt.hasNext() ) {
-                    Map.Entry<String,String> entry = icIt.next();
+                
+                // Check if there are items waiting in the queue (e.g. due to a crash)...
+                PreparedStatement queueStat = m_conn.prepareStatement("SELECT count(*) FROM `import_queue`");
+                ResultSet rs = queueStat.executeQuery();
+                if( rs.next() ) iqCount = rs.getInt(1);
+                rs.close();
+                queueStat.close();
+                
+                // If no items are waiting, fetch a list of fresh entries from the file-system
+                if( iqCount <= 0 ) {
+                    // Get a list of images to import
+                    HashMap<String,String> importContent = listDirectory(m_properties.getProperty("JACQImagesRPC.importDirectory"));
+
+                    // Cache list in database table
+                    queueStat = m_conn.prepareStatement("INSERT INTO `import_queue` (`identifier`, `filePath`) values (?, ?)");
+                    Iterator<Map.Entry<String,String>> icIt = importContent.entrySet().iterator();
+                    // Cycle through results and store them in the database
+                    while( icIt.hasNext() ) {
+                        Map.Entry<String,String> entry = icIt.next();
+                        String identifier = entry.getKey();
+                        String inputName = entry.getValue();
+                        
+                        System.err.println( "Adding [" + identifier + "] [" + inputName + "]" );
+
+                        // Assign properties to statement
+                        queueStat.setString(1, identifier);
+                        queueStat.setString(2, inputName);
+                        queueStat.executeUpdate();
+                    }
+                    // Finally execute & commit the queue-list
+                    queueStat.close();
+                    m_conn.commit();
+                }
+
+                // Prepare statement for identifier check
+                PreparedStatement existsStat = m_conn.prepareStatement( "SELECT `identifier` FROM `archive_resources` WHERE `identifier` = ?" );
+                // Find all entries in queue
+                queueStat = m_conn.prepareStatement("SELECT * FROM `import_queue`");
+                ResultSet statRs = queueStat.executeQuery();
+                // Fetch entries into temporary memory
+                HashMap<String,String> importQueue = new HashMap<String, String>();
+                while( statRs.next() ) {
+                    importQueue.put(statRs.getString("identifier"), statRs.getString("filePath"));
+                }
+                queueStat.close();
+                statRs.close();
+                
+                // Iterate over entries list and process them
+                Iterator<Map.Entry<String,String>> iqIt = importQueue.entrySet().iterator();
+                while( iqIt.hasNext() ) {
+                    // Fetch important information from queue-list
+                    Map.Entry<String,String> entry = iqIt.next();
                     String identifier = entry.getKey();
                     String inputName = entry.getValue();
                     try {
-                        existsStat.setString(1, identifier);
-
                         // Check if the identifier already exists
-                        ResultSet rs = existsStat.executeQuery();
+                        existsStat.setString(1, identifier);
+                        rs = existsStat.executeQuery();
                         boolean status = rs.next();
                         rs.close();
                         if( !status ) {
@@ -552,15 +609,26 @@ public class JACQImagesRPC extends HttpServlet {
                         // Commit the log message
                         m_conn.commit();
                     }
+                    // Remove item from import queue
+                    // This is done in any case since else it will stay in the queue and block it forever...
+                    queueStat = m_conn.prepareStatement("DELETE FROM `import_queue` WHERE `identifier` = ?");
+                    queueStat.setString(1, identifier);
+                    queueStat.executeUpdate();
+                    queueStat.close();
+                    m_conn.commit();
                 }
                 // Release prepared statements
                 existsStat.close();
                 // Enable auto-commit
                 m_conn.setAutoCommit(true);
             }
+            catch(SQLException e ) {
+                System.err.println( "[" + e.getErrorCode() + "] " + e.getSQLState() + " [" + e.getMessage() + "]");
+                e.printStackTrace();
+            }
             catch( Exception e ) {
                 System.err.println( e.toString() );
-                //e.printStackTrace();
+                e.printStackTrace();
             }
             
             // Notify parent that we are done
@@ -626,5 +694,41 @@ public class JACQImagesRPC extends HttpServlet {
         }
         
         return dirContent;
+    }
+    
+    /**
+     * Internal utility functions, only for upgrading purpose
+     */
+    
+    /**
+     * Refresh the image metadata for all files which do not have the lastModified or size attribute set yet
+     */
+    private void refreshImageMetadata() {
+        try {
+            // Find all files which do not have lastModified or size set
+            Statement stat = m_conn.createStatement();
+            ResultSet rs = stat.executeQuery( "SELECT `ar_id`, `imageFile` FROM `archive_resources` WHERE `lastModified` = 0 OR `size` = 0" );
+            
+            // Cycle through files and update them
+            while( rs.next() ) {
+                // Fetch file-database properties
+                int ar_id = rs.getInt( "ar_id" );
+                String imageFile = rs.getString( "imageFile" );
+                
+                // Construct new file handler
+                File image = new File(imageFile);
+                
+                // Update database with image properties
+                PreparedStatement refreshStat = m_conn.prepareStatement( "UPDATE `archive_resources` SET `lastModified` = ?, `size` = ? WHERE `ar_id` = ?" );
+                refreshStat.setLong( 1, image.lastModified() / 1000 );
+                refreshStat.setLong( 2, image.length() );
+                refreshStat.setInt( 3, ar_id );
+                refreshStat.executeUpdate();
+                refreshStat.close();
+            }
+        }
+        catch( Exception e ) {
+            e.printStackTrace();
+        }
     }
 }

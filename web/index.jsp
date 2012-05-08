@@ -9,9 +9,9 @@
 <html>
     <head>
         <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
-        <title>FReuD-Servlet</title>
+        <title>JACQ-Servlet</title>
     </head>
     <body>
-        <h1>This is the FReuD-Djatoka Servlet</h1>
+        <h1>This is the JACQ-Djatoka Servlet</h1>
     </body>
 </html>
