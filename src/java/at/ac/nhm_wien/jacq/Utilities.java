@@ -2,7 +2,7 @@
  * To change this template, choose Tools | Templates
  * and open the template in the editor.
  */
-package at.ac.nhm_wien;
+package at.ac.nhm_wien.jacq;
 
 import java.io.File;
 import java.text.SimpleDateFormat;
@@ -40,6 +40,30 @@ public class Utilities {
             else {
                 throw new TransformException( "Unable to access base-dir [" + baseDir.getPath() + "]" );
             }
+        }
+        
+        /**
+         * Safely copy a file from the source to the destination using native tools
+         * @param p_sourceFileName Name of source file
+         * @param p_destFileName Name of destination file
+         * @return Status code of copy command, or -1 on exception
+         */
+        public static int copyFile( String p_sourceFileName, String p_destFileName ) {
+            int exitCode = -1;
+            try {
+                Process cpProc = new ProcessBuilder( ImageServer.m_properties.getProperty("JACQImagesRPC.cpCommand"), ImageServer.m_properties.getProperty("JACQImagesRPC.cpCommandParameter"), p_sourceFileName, p_destFileName ).start();
+                exitCode = cpProc.waitFor();
+                cpProc.getErrorStream().close();
+                cpProc.getInputStream().close();
+                cpProc.getOutputStream().close();
+                cpProc.destroy();
+            }
+            catch(Exception e) {
+                System.err.println("[Utilities.copyFile]" + e.getMessage());
+                exitCode = -1;
+            }
+
+            return exitCode;
         }
     
 }

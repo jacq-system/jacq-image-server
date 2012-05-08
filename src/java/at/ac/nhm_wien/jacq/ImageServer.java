@@ -1,4 +1,4 @@
-package at.ac.nhm_wien;
+package at.ac.nhm_wien.jacq;
 
 /*
 JACQ
@@ -33,15 +33,23 @@ import net.sf.json.JSONObject;
  *
  * @author wkoller
  */
-public class JACQImagesRPC extends HttpServlet {
+public class ImageServer extends HttpServlet {
+    /**
+     * Used by all classes to access the configuration settings
+     */
+    public static Properties m_properties = new Properties();
+
     private String m_requestId = "";
     private JSONArray m_requestParams = null;
     private JSONObject m_response = null;
-    private Properties m_properties = new Properties();
     private Connection m_conn = null;
     
     private ImageImportThread m_importThread = null;
     
+    /**
+     * Initialize Servlet
+     * @throws ServletException 
+     */
     @Override
     public void init() throws ServletException {
         try {
@@ -544,12 +552,7 @@ public class JACQImagesRPC extends HttpServlet {
                                     // Check if destination does not exist
                                     if( !archiveFile.exists() && archiveFile.getParentFile().canWrite() ) {
                                         // Copy the file into the archive
-                                        Process cpProc = new ProcessBuilder( m_properties.getProperty("JACQImagesRPC.cpCommand"), m_properties.getProperty("JACQImagesRPC.cpCommandParameter"), inputFile.getPath(), archiveFile.getPath() ).start();
-                                        int exitCode = cpProc.waitFor();
-                                        cpProc.getErrorStream().close();
-                                        cpProc.getInputStream().close();
-                                        cpProc.getOutputStream().close();
-                                        cpProc.destroy();
+                                        int exitCode = Utilities.copyFile(inputFile.getPath(), archiveFile.getPath());
                                         if( exitCode == 0 ) {
                                             // Compare input and archive file
                                             if( inputFile.length() == archiveFile.length() ) {
@@ -574,7 +577,7 @@ public class JACQImagesRPC extends HttpServlet {
                                             }
                                         }
                                         else {
-                                            throw new TransformException( "Unable to move file into archive [" + inputFile.getPath() + " => " + archiveFile.getPath() + "]" );
+                                            throw new TransformException( "Unable to move file into archive [" + inputFile.getPath() + " => " + archiveFile.getPath() + "] - exit-code [" + exitCode + "]" );
                                         }
                                     }
                                     else {
