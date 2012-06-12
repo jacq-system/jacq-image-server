@@ -375,18 +375,15 @@ public class ImageServer extends HttpServlet {
         try {
             JSONArray images = new JSONArray();
             
-            System.err.println( "Searching for: " + specimen_id + " / " + herbar_number );
-            
             // Try to find all possible variants of this image
-            PreparedStatement stat = m_conn.prepareStatement("SELECT `identifier` FROM `resources` WHERE `identifier` LIKE ? OR `identifier` LIKE ? OR `identifier` LIKE ? OR `identifier` LIKE ? ORDER BY `identifier` ASC");
+            PreparedStatement stat = m_conn.prepareStatement("SELECT `identifier` FROM `resources` WHERE `identifier` = ? OR `identifier` = ? OR `identifier` = ? OR `identifier` LIKE ? ESCAPE '\\' ORDER BY `identifier` ASC");
             stat.setString(1, "tab_" + String.valueOf(specimen_id));
             stat.setString(2, "obs_" + String.valueOf(specimen_id));
             stat.setString(3, herbar_number );
-            stat.setString(4, herbar_number + "_%" );
+            stat.setString(4, herbar_number + "\\_%" );
             
             ResultSet rs = stat.executeQuery();
             while(rs.next()) {
-                System.err.println( "Adding result" );
                 images.add( rs.getString("identifier") );
             }
             rs.close();
@@ -460,8 +457,6 @@ public class ImageServer extends HttpServlet {
                         String identifier = entry.getKey();
                         String inputName = entry.getValue();
                         
-                        System.err.println( "Adding [" + identifier + "] [" + inputName + "]" );
-
                         // Assign properties to statement
                         queueStat.setString(1, identifier);
                         queueStat.setString(2, inputName);
