@@ -51,7 +51,7 @@ public class Utilities {
         public static int copyFile( String p_sourceFileName, String p_destFileName ) {
             int exitCode = -1;
             try {
-                Process cpProc = new ProcessBuilder( ImageServer.m_properties.getProperty("JACQImagesRPC.cpCommand"), ImageServer.m_properties.getProperty("JACQImagesRPC.cpCommandParameter"), p_sourceFileName, p_destFileName ).start();
+                Process cpProc = new ProcessBuilder( ImageServer.m_properties.getProperty("ImageServer.cpCommand"), ImageServer.m_properties.getProperty("ImageServer.cpCommandParameter"), p_sourceFileName, p_destFileName ).start();
                 exitCode = cpProc.waitFor();
                 cpProc.getErrorStream().close();
                 cpProc.getInputStream().close();

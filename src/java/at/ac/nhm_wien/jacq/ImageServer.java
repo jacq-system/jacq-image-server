@@ -19,6 +19,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 import java.io.*;
+import java.nio.file.Paths;
 import java.sql.*;
 import java.util.*;
 import javax.servlet.ServletException;
@@ -45,6 +46,7 @@ public class ImageServer extends HttpServlet {
     private Connection m_conn = null;
     
     private ImageImportThread m_importThread = null;
+    private ExportThread m_exportThread = null;
     
     /**
      * Initialize Servlet
@@ -57,7 +59,7 @@ public class ImageServer extends HttpServlet {
             m_properties.load(new FileInputStream(getServletContext().getRealPath( "/WEB-INF/"+ getClass().getSimpleName() + ".properties" )));
             // Establish "connection" to SQLite database
             Class.forName("org.sqlite.JDBC");
-            m_conn = DriverManager.getConnection("jdbc:sqlite:" + m_properties.getProperty("JACQImagesRPC.database") );
+            m_conn = DriverManager.getConnection("jdbc:sqlite:" + m_properties.getProperty("ImageServer.database") );
             m_conn.setAutoCommit(true);
             
             // Check if database is already initialized
@@ -94,6 +96,13 @@ public class ImageServer extends HttpServlet {
             rs = stat.executeQuery("SELECT name FROM sqlite_master WHERE name = 'import_queue' AND type = 'table'");
             if( !rs.next() ) {
                 stat.executeUpdate("CREATE table `import_queue` ( `iq_id` INTEGER CONSTRAINT `iq_id_pk` PRIMARY KEY AUTOINCREMENT, `identifier` TEXT, `filePath` TEXT )" );
+            }
+            rs.close();
+            stat.close();
+            // Check for export queue table
+            rs = stat.executeQuery("SELECT name FROM sqlite_master WHERE name = 'export_queue' AND type = 'table'");
+            if( !rs.next() ) {
+                stat.executeUpdate("CREATE table `export_queue` ( `eq_id` INTEGER CONSTRAINT `eq_id_pk` PRIMARY KEY AUTOINCREMENT, `archiveFilePath` TEXT, `exportFilePath` TEXT )" );
             }
             rs.close();
             stat.close();
@@ -178,13 +187,6 @@ public class ImageServer extends HttpServlet {
             m_response.put("id", m_requestId);
             try {
                 if( m_requestParams.size() > 0 ) {
-//                    Class[] paramsClass = new Class[m_requestParams.size()];
-//                    String[] params = (String[]) m_requestParams.toArray(new String[1]);
-//                    for( int i = 0; i < params.length; i++ ) {
-//                        paramsClass[i] = params[i].getClass();
-//                    }
-//
-//                    this.getClass().getMethod(methodName, paramsClass ).invoke(this, m_requestParams.toArray());
                     Class[] paramsClass = { JSONArray.class };
                     this.getClass().getMethod(methodName, paramsClass ).invoke(this, m_requestParams);
                 }
@@ -359,6 +361,38 @@ public class ImageServer extends HttpServlet {
         }
     }
     
+    private void exportImages( String p_exportPath, JSONArray p_identifier ) {
+        // Check for export thread
+        if( m_exportThread == null ) {
+            try {
+                // Construct export path
+                String exportPath = m_properties.getProperty("ImageServer.exportDirectory");
+                
+                // Replace any ../ with an empty string
+                // Note: this regular expression does not treat ../ very cleanly,
+                // however we only want to prevent overwriting anything outside the base-path
+                p_exportPath = p_exportPath.replaceAll("\\.\\./", "");
+                
+                // Check for trailing slash
+                if( !exportPath.endsWith("/") ) {
+                    exportPath += "/";
+                }
+                
+                // Create new export thread
+                m_exportThread = new ExportThread(exportPath + p_exportPath, p_identifier, m_conn);
+            }
+            catch( Exception e ) {
+                m_response.put("error", e.getMessage() );
+                m_response.put("result", "");
+            }
+        }
+        // ... thread already running
+        else {
+            m_response.put("error", "Export thread already running" );
+            m_response.put("result", "");
+        }
+    }
+    
     /**
      * Returns a list of file identifiers for a given specimen
      */
@@ -446,7 +480,7 @@ public class ImageServer extends HttpServlet {
                 // If no items are waiting, fetch a list of fresh entries from the file-system
                 if( iqCount <= 0 ) {
                     // Get a list of images to import
-                    HashMap<String,String> importContent = listDirectory(m_properties.getProperty("JACQImagesRPC.importDirectory"));
+                    HashMap<String,String> importContent = listDirectory(m_properties.getProperty("ImageServer.importDirectory"));
 
                     // Cache list in database table
                     queueStat = m_conn.prepareStatement("INSERT INTO `import_queue` (`identifier`, `filePath`) values (?, ?)");
@@ -495,13 +529,13 @@ public class ImageServer extends HttpServlet {
                         rs.close();
                         if( !status ) {
                             // Create output file-name & path
-                            String temporaryName = m_properties.getProperty("JACQImagesRPC.tempDirectory") + identifier + ".tif";
+                            String temporaryName = m_properties.getProperty("ImageServer.tempDirectory") + identifier + ".tif";
                             
                             // Check if we want to watermark the image
-                            if( !m_properties.getProperty("JACQImagesRPC.watermark").isEmpty() ) {
+                            if( !m_properties.getProperty("ImageServer.watermark").isEmpty() ) {
                                 // Watermark the image
                                 // Note: [0] for the input-file in order to avoid conflicts with multi-page tiffs
-                                Process watermarkProc = new ProcessBuilder( m_properties.getProperty("JACQImagesRPC.imComposite"), "-quiet", "-gravity", "SouthEast", m_properties.getProperty("JACQImagesRPC.watermark"), inputName + "[0]", temporaryName ).start();
+                                Process watermarkProc = new ProcessBuilder( m_properties.getProperty("ImageServer.imComposite"), "-quiet", "-gravity", "SouthEast", m_properties.getProperty("ImageServer.watermark"), inputName + "[0]", temporaryName ).start();
                                 watermarkProc.waitFor();
                                 watermarkProc.getErrorStream().close();
                                 watermarkProc.getInputStream().close();
@@ -518,10 +552,10 @@ public class ImageServer extends HttpServlet {
                             if( temporaryFile.exists() ) {
                                 // Create output directory for djatoka
                                 File inputFile = new File(inputName);
-                                String outputName = Utilities.createDirectory(m_properties.getProperty("JACQImagesRPC.resourcesDirectory"), inputFile.lastModified()) + identifier + ".jp2";
+                                String outputName = Utilities.createDirectory(m_properties.getProperty("ImageServer.resourcesDirectory"), inputFile.lastModified()) + identifier + ".jp2";
                                 
                                 // Convert new image
-                                Process compressProc = new ProcessBuilder( m_properties.getProperty("JACQImagesRPC.dCompress"), "-i", temporaryName, "-o", outputName ).start();
+                                Process compressProc = new ProcessBuilder( m_properties.getProperty("ImageServer.dCompress"), "-i", temporaryName, "-o", outputName ).start();
                                 compressProc.waitFor();
                                 compressProc.getErrorStream().close();
                                 compressProc.getInputStream().close();
@@ -542,7 +576,7 @@ public class ImageServer extends HttpServlet {
                                     resourcesStat.close();
                                     
                                     // Create archive directory
-                                    File archiveFile = new File( Utilities.createDirectory(m_properties.getProperty("JACQImagesRPC.archiveDirectory"), inputFile.lastModified() ) + inputFile.getName() );
+                                    File archiveFile = new File( Utilities.createDirectory(m_properties.getProperty("ImageServer.archiveDirectory"), inputFile.lastModified() ) + inputFile.getName() );
 
                                     // Check if destination does not exist
                                     if( !archiveFile.exists() && archiveFile.getParentFile().canWrite() ) {
@@ -639,7 +673,7 @@ public class ImageServer extends HttpServlet {
      */
     private void rescanDjatokaImagesDirectory() {
         try {
-            HashMap<String,String> dirContent = listDirectory(m_properties.getProperty("JACQImagesRPC.resourcesDirectory"));
+            HashMap<String,String> dirContent = listDirectory(m_properties.getProperty("ImageServer.resourcesDirectory"));
 
             // Cleanup old entries
             Statement stat = m_conn.createStatement();

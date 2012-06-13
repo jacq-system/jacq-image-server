@@ -18,7 +18,6 @@ import net.sf.json.JSONArray;
  * @author wkoller
  */
 public class ExportThread extends Thread {
-    private ArrayList<String> m_archiveFileNames = new ArrayList<String>();
     private String m_exportPath = null;
     private Connection m_conn = null;
     
@@ -26,19 +25,19 @@ public class ExportThread extends Thread {
      * Create thread and pass list of identifier to export
      * @param identifiers 
      */
-    public ExportThread( String exportPath, JSONArray identifiers ) throws Exception {
+    public ExportThread( String exportPath, JSONArray identifiers, Connection p_conn ) throws Exception {
         m_exportPath = exportPath;
+        m_conn = p_conn;
         
         // Check for trailing slash
-        if( m_exportPath.charAt(m_exportPath.length() - 1) != '/' ) m_exportPath += "/";
+        if( !m_exportPath.endsWith("/") ) m_exportPath += "/";
 
-        // Establish "connection" to SQLite database
-        Class.forName("org.sqlite.JDBC");
-        m_conn = DriverManager.getConnection("jdbc:sqlite:" + ImageServer.m_properties.getProperty("JACQImagesRPC.database") );
+        // Prepare statement for fetching archive path
         m_conn.setAutoCommit(true);
-
         PreparedStatement archiveStmt = m_conn.prepareStatement("SELECT `imageFile` FROM `archive_resources` WHERE `identifier` = ?");
+        PreparedStatement queueStmt = m_conn.prepareStatement("INSERT INTO `export_queue` ( `archiveFilePath`, `exportFilePath` ) values (?, ?)");
 
+        // Fetch paths for identifiers
         for( int i = 0; i < identifiers.size(); i++ ) {
             String identifier = identifiers.getString(i);
 
@@ -47,8 +46,13 @@ public class ExportThread extends Thread {
 
             // Check if we have a result
             if( rs.next() ) {
-                m_archiveFileNames.add(rs.getString("imageFile"));
+                File imageFile = new File(rs.getString("imageFile"));
+                
+                queueStmt.setString(0, imageFile.getAbsolutePath());
+                queueStmt.setString(1, m_exportPath + imageFile.getName() );
+                queueStmt.executeUpdate();
             }
+            rs.close();
         }
     }
 
@@ -58,13 +62,13 @@ public class ExportThread extends Thread {
     @Override
     public void run() {
         // Iterate over archive files and export them
-        Iterator<String> afnIt = m_archiveFileNames.iterator();
+        /*Iterator<String> afnIt = m_archiveFileNames.iterator();
         while( afnIt.hasNext() ) {
             String archiveFileName = afnIt.next();
             File archiveFile = new File(archiveFileName);
 
             // Copy file to export path
             int exitCode = Utilities.copyFile(archiveFileName, m_exportPath + archiveFile.getName());
-        }
+        }*/
     }
 }
