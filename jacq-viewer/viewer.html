@@ -23,6 +23,12 @@
       function identifier_select_onchange() {
           window.location = 'viewer.html?rft_id=' + $( 'identifier_select' ).get( 'value' ) + '&identifiers=' + identifiers.join(',');
       }
+      
+      // Clean up a passed identifier
+      function identifier_clean( p_identifier ) {
+          // Make sure only alphanumeric, hyphens and underscores are returned
+          return p_identifier.replace( /[^a-zA-Z0-9_-]/g, '' );
+      }
   </script>
  </head>
 
@@ -63,9 +69,13 @@
       }
     }
     
+    // Check for validity
+    images = identifier_clean( images );
     // Create drop-down entries for identifiers
     var selectEl = $( 'identifier_select' );
     for( var i = 0; i < identifiers.length; i++ ) {
+        identifiers[i] = identifier_clean( identifiers[i] );
+        
         // Create new option element
         var optionEl = new Element( 'option', { value: identifiers[i], html: identifiers[i] } );
         // inject option element into select
