@@ -27,7 +27,7 @@
  </head>
 
  <body>
-     <div style="position: absolute; top: 10px; left: 10px; width: 150px; color: #FFFFFF; z-index: 1000;">
+     <div id="identifier_select_div" style="position: absolute; top: 10px; left: 10px; width: 150px; color: #FFFFFF; z-index: 1000;">
          <select id="identifier_select" onchange="identifier_select_onchange();"></select>
      </div>
    <div style="width:99%;height:99%;margin-left:auto;margin-right:auto" id="targetframe"></div>
@@ -39,7 +39,7 @@
     // The *full* image path on the server. This path does *not* need to be in the web
     // server root directory. On Windows, use Unix style forward slash paths without
     // the "c:" prefix
-    var images = 'http://memory.loc.gov/gmd/gmd433/g4330/g4330/np000066.jp2';
+    var images = '';
 
     // Copyright or information message
     var credit = '';
@@ -73,6 +73,11 @@
     }
     // Set correct value as selected 
     selectEl.set( 'value', images );
+    
+    // Check if we have more than one image to be shown
+    if( identifiers.length <= 1 ) {
+        $('identifier_select_div').destroy();
+    }
     
     // Create our viewer object - note: must assign this to the 'iip' variable.
     // See documentation for more details of options
