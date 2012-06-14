@@ -22,7 +22,11 @@
   <script type="text/javascript">
       // Simple function for changing the location once a new item was selected
       function identifier_select_onchange() {
-          window.location = 'viewer.html?rft_id=' + $( 'identifier_select' ).get( 'value' ) + '&identifiers=' + identifiers.join(',');
+          identifier_switch( $( 'identifier_select' ).get( 'value' ) );
+      }
+      
+      function identifier_switch( p_identifier ) {
+          window.location = 'viewer.html?rft_id=' + p_identifier + '&identifiers=' + identifiers.join(',');
       }
       
       // Clean up a passed identifier
@@ -34,8 +38,9 @@
  </head>
 
  <body>
-     <div id="identifier_select_div" style="position: absolute; top: 10px; left: 10px; width: 150px; color: #FFFFFF; z-index: 1000;">
+     <div id="identifier_select_div" style="position: absolute; top: 50px; left: 10px; background-color: #222222; z-index: 1000; text-align: center;">
          <select id="identifier_select" onchange="identifier_select_onchange();"></select>
+         <br />
      </div>
    <div style="width:99%;height:99%;margin-left:auto;margin-right:auto" id="targetframe"></div>
 
@@ -73,7 +78,8 @@
     // Check for validity
     images = identifier_clean( images );
     // Create drop-down entries for identifiers
-    var selectEl = $( 'identifier_select' );
+    var selectDivEl = $('identifier_select_div');
+    var selectEl = $('identifier_select');
     for( var i = 0; i < identifiers.length; i++ ) {
         identifiers[i] = identifier_clean( identifiers[i] );
         
@@ -81,13 +87,38 @@
         var optionEl = new Element( 'option', { value: identifiers[i], html: identifiers[i] } );
         // inject option element into select
         optionEl.inject(selectEl);
+        
+        // Create thumbnail element
+        var thumbnailEl = new Element( 'img',
+        {
+            src: server + '?url_ver=Z39.88-2004&rft_id=' + identifiers[i] + '&svc_id=info:lanl-repo/svc/getRegion&svc_val_fmt=info:ofi/fmt:kev:mtx:jpeg2000&svc.format=image/jpeg&svc.scale=160,0',
+            styles: {
+                margin: '2px',
+                cursor: 'pointer'
+            },
+            id: identifiers[i]
+        } );
+        thumbnailEl.inject(selectDivEl);
+        
+        // Check if this is the currently active image
+        if( identifiers[i] == images ) {
+            thumbnailEl.set( 'styles', { border: '1px solid yellow', margin: '0px' } );
+        }
+        
+        // Add event handler for click
+        thumbnailEl.addEvent( 'click', function() {
+            identifier_switch( this.id );
+        } );
+        
+        // Add break so that thumbnails are aligned vertically
+        (new Element( 'br' )).inject(selectDivEl);
     }
     // Set correct value as selected 
     selectEl.set( 'value', images );
     
     // Check if we have more than one image to be shown
     if( identifiers.length <= 1 ) {
-        $('identifier_select_div').destroy();
+        selectDivEl.destroy();
     }
     
     // Create our viewer object - note: must assign this to the 'iip' variable.
