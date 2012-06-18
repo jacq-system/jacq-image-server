@@ -348,7 +348,11 @@ public class ImageServer extends HttpServlet {
             stat.setString(1, String.valueOf(it_id) );
             ResultSet rs = stat.executeQuery();
             while(rs.next()) {
-                logs.add( "[" + rs.getString("logtime") + "] [" + rs.getString("identifier") + "] " + rs.getString("message") );
+                JSONObject logObj = new JSONObject();
+                logObj.put("logtime", rs.getString("logtime"));
+                logObj.put("identifier", rs.getString("identifier"));
+                logObj.put("message", rs.getString("message"));
+                logs.add( logObj );
             }
             rs.close();
             stat.close();
