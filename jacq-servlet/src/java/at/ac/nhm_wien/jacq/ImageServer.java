@@ -344,7 +344,7 @@ public class ImageServer extends HttpServlet {
         try {
             JSONArray logs = new JSONArray();
             
-            PreparedStatement stat = m_conn.prepareStatement("SELECT `logtime`, `identifier`, `message` FROM `import_logs` WHERE `it_id` >= ? ORDER BY `logtime` ASC");
+            PreparedStatement stat = m_conn.prepareStatement("SELECT `logtime`, `identifier`, `message` FROM `import_logs` WHERE `it_id` = ? ORDER BY `logtime` ASC");
             stat.setString(1, String.valueOf(it_id) );
             ResultSet rs = stat.executeQuery();
             while(rs.next()) {
