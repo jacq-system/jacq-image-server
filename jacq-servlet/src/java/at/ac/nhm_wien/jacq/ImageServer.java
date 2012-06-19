@@ -244,7 +244,7 @@ public class ImageServer extends HttpServlet {
     /**
      * Starts a thread for importing new images
      */
-    public void x_importImages() {
+    public int x_importImages() {
         // Check if thread is already running
         if( m_importThread == null ) {
             try {
@@ -267,21 +267,30 @@ public class ImageServer extends HttpServlet {
                 else {
                     m_response.element( "result", "" );
                     m_response.element( "error", "Thread log insert failed - can't start!" );
+                    
+                    return -3;
                 }
 
                 // Free up statement
                 it_id_result.close();
                 prep.close();
+                
+                // Return thread id
+                return m_importThread.it_id;
             }
             // Something went wrong during thread startup
             catch( Exception e ) {
                 m_response.element( "result", "" );
                 m_response.element( "error", "Error while trying to start thread: " + e.getMessage() );
+                
+                return -1;
             }
         }
         else {
             m_response.element( "result", "" );
             m_response.element( "error", "Thread already running!" );
+            
+            return -2;
         }
     }
     
@@ -487,6 +496,58 @@ public class ImageServer extends HttpServlet {
             m_response.put("result", "");
         }
     }
+    
+    /**
+     * Force import of a single identifier
+     * @param params 
+     */
+    public void x_forceImport(JSONArray params) {
+        this.forceImport(params.getString(0));
+    }
+    
+    private void forceImport(String identifier) {
+        try {
+            // Check import directory for identifier
+            HashMap<String,String> importContent = listDirectory(m_properties.getProperty("ImageServer.importDirectory"));
+            String filePath = null;
+            
+            Iterator<Map.Entry<String,String>> icIt = importContent.entrySet().iterator();
+            while(icIt.hasNext()) {
+                Map.Entry<String,String> currEntry = icIt.next();
+                
+                // Check if this entry equals our identifier
+                if( currEntry.getKey().equals(identifier) ) {
+                    filePath = currEntry.getValue();
+                    break;
+                }
+            }
+            
+            // Check if we found a file
+            if( filePath == null ) {
+                throw new Exception( "No file with identifier '" + identifier + "' found. Please check the import directory." );
+            }
+            
+            // Insert into import queue
+            PreparedStatement iqInsert = m_conn.prepareStatement("INSERT INTO `import_queue` ( `identifier`, `filePath`, `force` ) values ( ?, ?, 1)");
+            iqInsert.setString(1, identifier);
+            iqInsert.setString(2, filePath);
+            iqInsert.executeUpdate();
+            
+            // Try to start an import thread
+            if( this.x_importImages() < 0 ) {
+                throw new Exception( "Image added to queue, but unable to start import thread. Maybe it's already running?" );
+            }
+            
+            
+            // Everything went fine
+            m_response.put("result", "'" + identifier + "' added for import.");
+        }
+        catch( Exception e ) {
+            m_response.put("error", e.getMessage());
+            m_response.put("result", "");
+        }
+    }
+    
     /**
      * PUBLIC FUNCTIONS END
      */
