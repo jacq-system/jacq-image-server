@@ -274,7 +274,7 @@ public class ImageServer extends HttpServlet {
             JSONArray resources = new JSONArray();
 
             PreparedStatement prepStat = m_conn.prepareStatement("SELECT `identifier` FROM `archive_resources` WHERE `obsolete` = ? ORDER BY `identifier`");
-            prepStat.setInt(0, p_obsolete);
+            prepStat.setInt(1, p_obsolete);
             ResultSet rs = prepStat.executeQuery();
             
             while(rs.next()) {
