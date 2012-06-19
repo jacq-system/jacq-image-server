@@ -186,10 +186,15 @@ public class ImageServer extends HttpServlet {
                 m_requestId = reqObject.getString("id");
                 m_response.put("id", m_requestId);
                 m_requestParams = reqObject.getJSONArray("params");
-                String requestKey = m_requestParams.getString(0);
-                methodName = "x_" + reqObject.getString("method");  // Prefix method with 'x_' to preven arbitrary executions
+                methodName = reqObject.getString("method");  // Prefix method with 'x_' to preven arbitrary executions
+
+                // Check if we have at least one key
+                if( m_requestParams.isEmpty() ) {
+                    throw new Exception( "No key passed" );
+                }
                 
                 // First parameter always MUST be the authentication key
+                String requestKey = m_requestParams.getString(0);
                 m_requestParams.remove(0);
                 
                 // Check if requestKey is valid
@@ -200,7 +205,7 @@ public class ImageServer extends HttpServlet {
                 // Find correct method to call
                 Method[] methods = this.getClass().getMethods();
                 for( Method method : methods ) {
-                    if( method.getName().equals(methodName) ) {
+                    if( method.getName().equals("x_" + methodName) ) {
                         // Check if the parameters do fit
                         Class[] parameterTypes = method.getParameterTypes();
                         
