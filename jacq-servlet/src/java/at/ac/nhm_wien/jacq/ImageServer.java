@@ -141,7 +141,7 @@ public class ImageServer extends HttpServlet {
                 Map.Entry<String,String[]> currEntry = paramsIt.next();
                 
                 // Id & Method are handled special
-                if( currEntry.getKey().equals( "id" ) || currEntry.getKey().equals( "method" ) || currEntry.getKey().equals("key") ) {
+                if( currEntry.getKey().equals( "id" ) || currEntry.getKey().equals( "method" ) ) {
                     reqObject.element( currEntry.getKey(), currEntry.getValue()[0] );
                 }
                 else {
@@ -179,42 +179,41 @@ public class ImageServer extends HttpServlet {
      */
     protected String handleRequest(JSONObject reqObject) {
         m_response = new JSONObject();
+        String methodName = "";
         if( !reqObject.isNullObject() ) {
-            m_requestId = reqObject.getString("id");
-            m_requestParams = reqObject.getJSONArray("params");
-            String requestKey = (reqObject.has("key")) ? reqObject.getString("key") : "";
-            
-            String methodName = reqObject.getString("method");
-            m_response.put("id", m_requestId);
             try {
-                Method method = null;
-                if( m_requestParams.size() > 0 ) {
-                    Class[] paramsClass = { JSONArray.class };
-                    method = this.getClass().getMethod(methodName, paramsClass );
-                    
-                    // Check for key securing
-                    if( !method.isAnnotationPresent(RequiresNoKey.class) ) {
-                        if( !requestKey.equals(m_properties.getProperty("ImageServer.key")) ) {
-                            throw new Exception( "Invalid key passed" );
-                        }
-                    }
-                    
-                    // Finally invoke the function
-                    method.invoke(this, m_requestParams);
+                // Fetch passed parameters
+                m_requestId = reqObject.getString("id");
+                m_response.put("id", m_requestId);
+                m_requestParams = reqObject.getJSONArray("params");
+                String requestKey = m_requestParams.getString(0);
+                methodName = reqObject.getString("method");
+                
+                // First parameter always MUST be the authentication key
+                m_requestParams.remove(0);
+                
+                // Check if requestKey is valid
+                if( !requestKey.equals(m_properties.getProperty("ImageServer.key")) ) {
+                    throw new Exception( "Invalid key passed" );
                 }
-                else {
-                    // Find method
-                    method = this.getClass().getMethod(methodName);
 
-                    // Check for key securing
-                    if( !method.isAnnotationPresent(RequiresNoKey.class) ) {
-                        if( !requestKey.equals(m_properties.getProperty("ImageServer.key")) ) {
-                            throw new Exception( "Invalid key passed" );
+                // Find correct method to call
+                Method[] methods = this.getClass().getMethods();
+                for( Method method : methods ) {
+                    if( method.getName().equals(methodName) ) {
+                        // Check if the parameters do fit
+                        Class[] parameterTypes = method.getParameterTypes();
+                        
+                        // Check if we have parameters
+                        if( m_requestParams.isEmpty() && parameterTypes.length == 0 ) {
+                            method.invoke(this);
+                            break;
+                        }
+                        else if( m_requestParams.size() > 0 && parameterTypes.length > 0 && parameterTypes[0] == JSONArray.class ) {
+                            method.invoke(this, m_requestParams);
+                            break;
                         }
                     }
-                    
-                    // Finally invoke the function
-                    method.invoke(this, m_requestParams.toArray());
                 }
             }
             catch(Exception e ) {
