@@ -276,7 +276,6 @@ public class ImageServer extends HttpServlet {
      * Including obsoletes can be passed as the first parameter
      * @param params 
      */
-    @RequiresNoKey
     public void listArchiveImages(JSONArray params) {
         this.listArchiveImages( (params.getBoolean(0)) ? 1 : 0 );
     }
@@ -284,7 +283,6 @@ public class ImageServer extends HttpServlet {
     /**
      * Calling listArchiveImages without parameters is allowed as well
      */
-    @RequiresNoKey
     public void listArchiveImages() {
         this.listArchiveImages(0);
     }
@@ -318,7 +316,6 @@ public class ImageServer extends HttpServlet {
     /**
      * List all images currently stored in the archive
      */
-    @RequiresNoKey
     public void listDjatokaImages() {
         
         try {
@@ -443,7 +440,6 @@ public class ImageServer extends HttpServlet {
     /**
      * Returns a list of file identifiers for a given specimen
      */
-    @RequiresNoKey
     public void listSpecimenImages( JSONArray params ) {
         listSpecimenImages( params.getInt(0), params.getString(1) );
     }
