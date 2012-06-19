@@ -505,6 +505,10 @@ public class ImageServer extends HttpServlet {
         this.forceImport(params.getString(0));
     }
     
+    /**
+     * Force import of a passed identifier
+     * @param identifier Identifier to force the import for
+     */
     private void forceImport(String identifier) {
         try {
             // Check import directory for identifier
