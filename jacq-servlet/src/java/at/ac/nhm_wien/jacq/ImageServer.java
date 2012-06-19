@@ -19,7 +19,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 import java.io.*;
-import java.nio.file.Paths;
+import java.lang.reflect.Method;
 import java.sql.*;
 import java.util.*;
 import javax.servlet.ServletException;
@@ -56,7 +56,7 @@ public class ImageServer extends HttpServlet {
     public void init() throws ServletException {
         try {
             // Load properties
-            m_properties.load(new FileInputStream(getServletContext().getRealPath( "/WEB-INF/"+ getClass().getSimpleName() + ".properties" )));
+            m_properties.load(new FileInputStream(getServletContext().getRealPath( "/WEB-INF/"+ this.getClass().getSimpleName() + ".properties" )));
             // Establish "connection" to SQLite database
             Class.forName("org.sqlite.JDBC");
             m_conn = DriverManager.getConnection("jdbc:sqlite:" + m_properties.getProperty("ImageServer.database") );
@@ -141,7 +141,7 @@ public class ImageServer extends HttpServlet {
                 Map.Entry<String,String[]> currEntry = paramsIt.next();
                 
                 // Id & Method are handled special
-                if( currEntry.getKey().equals( "id" ) || currEntry.getKey().equals( "method" ) ) {
+                if( currEntry.getKey().equals( "id" ) || currEntry.getKey().equals( "method" ) || currEntry.getKey().equals("key") ) {
                     reqObject.element( currEntry.getKey(), currEntry.getValue()[0] );
                 }
                 else {
@@ -182,16 +182,39 @@ public class ImageServer extends HttpServlet {
         if( !reqObject.isNullObject() ) {
             m_requestId = reqObject.getString("id");
             m_requestParams = reqObject.getJSONArray("params");
-
+            String requestKey = (reqObject.has("key")) ? reqObject.getString("key") : "";
+            
             String methodName = reqObject.getString("method");
             m_response.put("id", m_requestId);
             try {
+                Method method = null;
                 if( m_requestParams.size() > 0 ) {
                     Class[] paramsClass = { JSONArray.class };
-                    this.getClass().getMethod(methodName, paramsClass ).invoke(this, m_requestParams);
+                    method = this.getClass().getMethod(methodName, paramsClass );
+                    
+                    // Check for key securing
+                    if( !method.isAnnotationPresent(RequiresNoKey.class) ) {
+                        if( !requestKey.equals(m_properties.getProperty("ImageServer.key")) ) {
+                            throw new Exception( "Invalid key passed" );
+                        }
+                    }
+                    
+                    // Finally invoke the function
+                    method.invoke(this, m_requestParams);
                 }
                 else {
-                    this.getClass().getMethod(methodName ).invoke(this, m_requestParams.toArray());
+                    // Find method
+                    method = this.getClass().getMethod(methodName);
+
+                    // Check for key securing
+                    if( !method.isAnnotationPresent(RequiresNoKey.class) ) {
+                        if( !requestKey.equals(m_properties.getProperty("ImageServer.key")) ) {
+                            throw new Exception( "Invalid key passed" );
+                        }
+                    }
+                    
+                    // Finally invoke the function
+                    method.invoke(this, m_requestParams.toArray());
                 }
             }
             catch(Exception e ) {
@@ -254,6 +277,7 @@ public class ImageServer extends HttpServlet {
      * Including obsoletes can be passed as the first parameter
      * @param params 
      */
+    @RequiresNoKey
     public void listArchiveImages(JSONArray params) {
         this.listArchiveImages( (params.getBoolean(0)) ? 1 : 0 );
     }
@@ -261,6 +285,7 @@ public class ImageServer extends HttpServlet {
     /**
      * Calling listArchiveImages without parameters is allowed as well
      */
+    @RequiresNoKey
     public void listArchiveImages() {
         this.listArchiveImages(0);
     }
@@ -294,6 +319,7 @@ public class ImageServer extends HttpServlet {
     /**
      * List all images currently stored in the archive
      */
+    @RequiresNoKey
     public void listDjatokaImages() {
         
         try {
@@ -418,6 +444,7 @@ public class ImageServer extends HttpServlet {
     /**
      * Returns a list of file identifiers for a given specimen
      */
+    @RequiresNoKey
     public void listSpecimenImages( JSONArray params ) {
         listSpecimenImages( params.getInt(0), params.getString(1) );
     }
