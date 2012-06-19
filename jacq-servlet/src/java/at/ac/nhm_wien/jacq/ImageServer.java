@@ -251,19 +251,37 @@ public class ImageServer extends HttpServlet {
     }
     
     /**
-     * List all images currently stored in the archive
+     * Including obsoletes can be passed as the first parameter
+     * @param params 
+     */
+    public void listArchiveImages(JSONArray params) {
+        this.listArchiveImages( (params.getBoolean(0)) ? 1 : 0 );
+    }
+    
+    /**
+     * Calling listArchiveImages without parameters is allowed as well
      */
     public void listArchiveImages() {
+        this.listArchiveImages(0);
+    }
+    
+    /**
+     * List all images currently stored in the archive
+     * @param p_obsolete include obsolete entries
+     */
+    private void listArchiveImages( int p_obsolete ) {
         try {
             JSONArray resources = new JSONArray();
+
+            PreparedStatement prepStat = m_conn.prepareStatement("SELECT `identifier` FROM `archive_resources` WHERE `obsolete` = ? ORDER BY `identifier`");
+            prepStat.setInt(0, p_obsolete);
+            ResultSet rs = prepStat.executeQuery();
             
-            Statement stat = m_conn.createStatement();
-            ResultSet rs = stat.executeQuery("SELECT `identifier` FROM `archive_resources` ORDER BY `identifier`");
             while(rs.next()) {
                 resources.add( rs.getString("identifier") );
             }
             rs.close();
-            stat.close();
+            prepStat.close();
             
             m_response.put("result", resources);
         }
