@@ -702,8 +702,8 @@ public class ImageServer extends HttpServlet {
                                     // Check if an old entry already existed
                                     if( status ) {
                                         // Remove old resources entry
-                                        PreparedStatement resDelStat = m_conn.prepareCall("DELETE FROM `resources` WHERE `identifier` = ?");
-                                        resDelStat.setString(0, identifier);
+                                        PreparedStatement resDelStat = m_conn.prepareStatement("DELETE FROM `resources` WHERE `identifier` = ?");
+                                        resDelStat.setString(1, identifier);
                                         resDelStat.executeUpdate();
                                         resDelStat.close();
                                     }
@@ -729,7 +729,7 @@ public class ImageServer extends HttpServlet {
                                                 if( status ) {
                                                     // Mark old entry as obsolete
                                                     PreparedStatement archiveUpdateStat = m_conn.prepareStatement("UPDATE `archive_resources` SET `obsolete` = 1 WHERE `identifier` = ?");
-                                                    archiveUpdateStat.setString(0, identifier);
+                                                    archiveUpdateStat.setString(1, identifier);
                                                     archiveUpdateStat.executeUpdate();
                                                     archiveUpdateStat.close();
                                                 }
@@ -777,6 +777,9 @@ public class ImageServer extends HttpServlet {
                     catch( Exception e ) {
                         // Something went wrong, rollback
                         m_conn.rollback();
+                        
+                        // Write import errors to application server log (for tracing errors)
+                        e.printStackTrace();
                         
                         // Log this issue
                         PreparedStatement logStat = m_conn.prepareStatement( "INSERT INTO `import_logs` ( `it_id`, `logtime`, `identifier`, `message` ) values(?, ?, ?, ?)" );
