@@ -95,7 +95,7 @@ public class ImageServer extends HttpServlet {
             // Check for import queue table
             rs = stat.executeQuery("SELECT name FROM sqlite_master WHERE name = 'import_queue' AND type = 'table'");
             if( !rs.next() ) {
-                stat.executeUpdate("CREATE table `import_queue` ( `iq_id` INTEGER CONSTRAINT `iq_id_pk` PRIMARY KEY AUTOINCREMENT, `identifier` TEXT, `filePath` TEXT )" );
+                stat.executeUpdate("CREATE table `import_queue` ( `iq_id` INTEGER CONSTRAINT `iq_id_pk` PRIMARY KEY AUTOINCREMENT, `identifier` TEXT, `filePath` TEXT, `force` INTEGER DEFAULT 0 )" );
             }
             rs.close();
             stat.close();
@@ -524,32 +524,41 @@ public class ImageServer extends HttpServlet {
                 }
 
                 // Prepare statement for identifier check
-                PreparedStatement existsStat = m_conn.prepareStatement( "SELECT `identifier` FROM `archive_resources` WHERE `identifier` = ?" );
+                PreparedStatement existsStat = m_conn.prepareStatement( "SELECT `identifier` FROM `archive_resources` WHERE `identifier` = ? AND `obsolete` = 0" );
                 // Find all entries in queue
                 queueStat = m_conn.prepareStatement("SELECT * FROM `import_queue`");
                 ResultSet statRs = queueStat.executeQuery();
                 // Fetch entries into temporary memory
-                HashMap<String,String> importQueue = new HashMap<String, String>();
+                HashMap<String, HashMap<String, Object>> importQueue = new HashMap<String, HashMap<String, Object>>();
                 while( statRs.next() ) {
-                    importQueue.put(statRs.getString("identifier"), statRs.getString("filePath"));
+                    HashMap<String, Object> queueObj = new HashMap<String, Object>();
+                    queueObj.put( "filePath", statRs.getString("filePath") );
+                    queueObj.put( "force", statRs.getInt("force") );
+                    
+                    importQueue.put(statRs.getString("identifier"), queueObj);
                 }
                 queueStat.close();
                 statRs.close();
                 
                 // Iterate over entries list and process them
-                Iterator<Map.Entry<String,String>> iqIt = importQueue.entrySet().iterator();
+                Iterator<Map.Entry<String,HashMap<String, Object>>> iqIt = importQueue.entrySet().iterator();
                 while( iqIt.hasNext() ) {
                     // Fetch important information from queue-list
-                    Map.Entry<String,String> entry = iqIt.next();
+                    Map.Entry<String,HashMap<String, Object>> entry = iqIt.next();
                     String identifier = entry.getKey();
-                    String inputName = entry.getValue();
+                    HashMap<String, Object> queueObj = entry.getValue();
+                    String inputName = (String) queueObj.get("filePath");
+                    int force = (Integer) queueObj.get("force");
+                    
+                    // Start working on entry
                     try {
                         // Check if the identifier already exists
                         existsStat.setString(1, identifier);
                         rs = existsStat.executeQuery();
                         boolean status = rs.next();
                         rs.close();
-                        if( !status ) {
+                        // Allow forced adds anyway
+                        if( !status || force == 1 ) {
                             // Create output file-name & path
                             String temporaryName = m_properties.getProperty("ImageServer.tempDirectory") + identifier + ".tif";
                             
@@ -590,6 +599,15 @@ public class ImageServer extends HttpServlet {
                                 // Check if image conversion was successfull
                                 File outputFile = new File(outputName);
                                 if( outputFile.exists() ) {
+                                    // Check if an old entry already existed
+                                    if( status ) {
+                                        // Remove old resources entry
+                                        PreparedStatement resDelStat = m_conn.prepareCall("DELETE FROM `resources` WHERE `identifier` = ?");
+                                        resDelStat.setString(0, identifier);
+                                        resDelStat.executeUpdate();
+                                        resDelStat.close();
+                                    }
+                                    
                                     // Insert id into database
                                     PreparedStatement resourcesStat = m_conn.prepareStatement( "INSERT INTO `resources` ( `identifier`, `imageFile` ) values (?, ?)" );
                                     resourcesStat.setString(1, identifier);
@@ -607,6 +625,15 @@ public class ImageServer extends HttpServlet {
                                         if( exitCode == 0 ) {
                                             // Compare input and archive file
                                             if( inputFile.length() == archiveFile.length() ) {
+                                                // Check if an old entry already existed
+                                                if( status ) {
+                                                    // Mark old entry as obsolete
+                                                    PreparedStatement archiveUpdateStat = m_conn.prepareStatement("UPDATE `archive_resources` SET `obsolete` = 1 WHERE `identifier` = ?");
+                                                    archiveUpdateStat.setString(0, identifier);
+                                                    archiveUpdateStat.executeUpdate();
+                                                    archiveUpdateStat.close();
+                                                }
+                                                
                                                 // Update archive resources list
                                                 PreparedStatement archiveStat = m_conn.prepareStatement( "INSERT INTO `archive_resources` ( `identifier`, `imageFile`, `lastModified`, `size`, `it_id` ) values (?, ?, ?, ?, ?)" );
                                                 archiveStat.setString(1, identifier);
