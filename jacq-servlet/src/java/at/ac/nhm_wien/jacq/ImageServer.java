@@ -187,7 +187,7 @@ public class ImageServer extends HttpServlet {
                 m_response.put("id", m_requestId);
                 m_requestParams = reqObject.getJSONArray("params");
                 String requestKey = m_requestParams.getString(0);
-                methodName = reqObject.getString("method");
+                methodName = "x_" + reqObject.getString("method");  // Prefix method with 'x_' to preven arbitrary executions
                 
                 // First parameter always MUST be the authentication key
                 m_requestParams.remove(0);
@@ -231,7 +231,7 @@ public class ImageServer extends HttpServlet {
     /**
      * Starts a thread for importing new images
      */
-    public void importImages() {
+    public void x_importImages() {
         // Check if thread is already running
         if( m_importThread == null ) {
             try {
@@ -276,14 +276,14 @@ public class ImageServer extends HttpServlet {
      * Including obsoletes can be passed as the first parameter
      * @param params 
      */
-    public void listArchiveImages(JSONArray params) {
+    public void x_listArchiveImages(JSONArray params) {
         this.listArchiveImages( (params.getBoolean(0)) ? 1 : 0 );
     }
     
     /**
      * Calling listArchiveImages without parameters is allowed as well
      */
-    public void listArchiveImages() {
+    public void x_listArchiveImages() {
         this.listArchiveImages(0);
     }
     
@@ -316,7 +316,7 @@ public class ImageServer extends HttpServlet {
     /**
      * List all images currently stored in the archive
      */
-    public void listDjatokaImages() {
+    public void x_listDjatokaImages() {
         
         try {
             JSONArray resources = new JSONArray();
@@ -340,7 +340,7 @@ public class ImageServer extends HttpServlet {
     /**
      * List all import threads
      */
-    public void listImportThreads( JSONArray params ) {
+    public void x_listImportThreads( JSONArray params ) {
         listImportThreads( params.getInt(0) );
     }
     
@@ -372,7 +372,7 @@ public class ImageServer extends HttpServlet {
     /**
      * Returns a list of log messages for a given thread-id
      */
-    public void listImportLogs( JSONArray params ) {
+    public void x_listImportLogs( JSONArray params ) {
         listImportLogs( params.getInt(0) );
     }
     
@@ -440,7 +440,7 @@ public class ImageServer extends HttpServlet {
     /**
      * Returns a list of file identifiers for a given specimen
      */
-    public void listSpecimenImages( JSONArray params ) {
+    public void x_listSpecimenImages( JSONArray params ) {
         listSpecimenImages( params.getInt(0), params.getString(1) );
     }
     
