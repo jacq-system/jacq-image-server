@@ -203,6 +203,7 @@ public class ImageServer extends HttpServlet {
                 }
 
                 // Find correct method to call
+                Method callMethod = null;
                 Method[] methods = this.getClass().getMethods();
                 for( Method method : methods ) {
                     if( method.getName().equals("x_" + methodName) ) {
@@ -211,14 +212,21 @@ public class ImageServer extends HttpServlet {
                         
                         // Check if we have parameters
                         if( m_requestParams.isEmpty() && parameterTypes.length == 0 ) {
-                            method.invoke(this);
+                            callMethod = method;
+                            callMethod.invoke(this);
                             break;
                         }
                         else if( m_requestParams.size() > 0 && parameterTypes.length > 0 && parameterTypes[0] == JSONArray.class ) {
-                            method.invoke(this, m_requestParams);
+                            callMethod = method;
+                            callMethod.invoke(this, m_requestParams);
                             break;
                         }
                     }
+                }
+                
+                // Check if we found a method at all
+                if( callMethod == null ) {
+                    throw new Exception( "Method not found" );
                 }
             }
             catch(Exception e ) {
@@ -278,7 +286,7 @@ public class ImageServer extends HttpServlet {
     }
     
     /**
-     * Including obsoletes can be passed as the first parameter
+     * Wheter if we want the obsoletes can be passed as first parameter
      * @param params 
      */
     public void x_listArchiveImages(JSONArray params) {
@@ -294,7 +302,7 @@ public class ImageServer extends HttpServlet {
     
     /**
      * List all images currently stored in the archive
-     * @param p_obsolete include obsolete entries
+     * @param p_obsolete return obsolete entries
      */
     private void listArchiveImages( int p_obsolete ) {
         try {
