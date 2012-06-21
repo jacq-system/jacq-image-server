@@ -18,6 +18,11 @@ public class ExportThread extends ImageServerThread {
     private String m_exportPath = null;
     private JSONArray m_identifiers = null;
     private Connection m_conn = null;
+
+    @Override
+    public int getThread_type() {
+        return 1;
+    }
     
     /**
      * Create thread and pass list of identifier to export
