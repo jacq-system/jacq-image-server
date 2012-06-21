@@ -7,7 +7,6 @@ package at.ac.nhm_wien.jacq;
 import java.io.File;
 import java.text.SimpleDateFormat;
 import java.util.Date;
-import javax.xml.crypto.dsig.TransformException;
 
 /**
  *
@@ -21,7 +20,7 @@ public class Utilities {
          * @return String Returns the name of the output directory on success (with trailing slash)
          * @throws TransformException 
          */
-        public static String createDirectory( String p_baseDir, long p_modificationDate ) throws TransformException {
+        public static String createDirectory( String p_baseDir, long p_modificationDate ) throws Exception {
             File baseDir = new File(p_baseDir);
             if( baseDir.exists() && baseDir.isDirectory() && baseDir.canWrite() ) {
                 // Create formatted output directory
@@ -34,11 +33,11 @@ public class Utilities {
                     return subDir.getPath() + "/";
                 }
                 else {
-                    throw new TransformException( "Unable to access sub-dir [" + subDir.getPath() + "]" );
+                    throw new Exception( "Unable to access sub-dir [" + subDir.getPath() + "]" );
                 }
             }
             else {
-                throw new TransformException( "Unable to access base-dir [" + baseDir.getPath() + "]" );
+                throw new Exception( "Unable to access base-dir [" + baseDir.getPath() + "]" );
             }
         }
         
@@ -48,22 +47,25 @@ public class Utilities {
          * @param p_destFileName Name of destination file
          * @return Status code of copy command, or -1 on exception
          */
-        public static int copyFile( String p_sourceFileName, String p_destFileName ) {
-            int exitCode = -1;
-            try {
-                Process cpProc = new ProcessBuilder( ImageServer.m_properties.getProperty("ImageServer.cpCommand"), ImageServer.m_properties.getProperty("ImageServer.cpCommandParameter"), p_sourceFileName, p_destFileName ).start();
-                exitCode = cpProc.waitFor();
-                cpProc.getErrorStream().close();
-                cpProc.getInputStream().close();
-                cpProc.getOutputStream().close();
-                cpProc.destroy();
-            }
-            catch(Exception e) {
-                System.err.println("[Utilities.copyFile]" + e.getMessage());
-                exitCode = -1;
-            }
+        public static void copyFile( String p_sourceFileName, String p_destFileName ) throws Exception {
+            // Create copy command based on settings of image-server
+            Process cpProc = new ProcessBuilder( ImageServer.m_properties.getProperty("ImageServer.cpCommand"), ImageServer.m_properties.getProperty("ImageServer.cpCommandParameter"), p_sourceFileName, p_destFileName ).start();
+            int exitCode = cpProc.waitFor();
+            cpProc.getErrorStream().close();
+            cpProc.getInputStream().close();
+            cpProc.getOutputStream().close();
+            cpProc.destroy();
 
-            return exitCode;
+            // Check if file copied correctly
+            File sourceFile = new File(p_sourceFileName);
+            File destFile = new File(p_destFileName);
+            // Check file size
+            if( sourceFile.length() != destFile.length() ) {
+                throw new Exception( "File sizes did not match" );
+            }
+            
+            if( exitCode != 0 ) {
+                throw new Exception( "Copy command did not finish correctly. Returned exit code is '" + exitCode + "'" );
+            }
         }
-    
 }
