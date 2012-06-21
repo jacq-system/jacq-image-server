@@ -45,7 +45,6 @@ public class ExportThread extends ImageServerThread {
         try {
             // Prepare statement for fetching archive path
             PreparedStatement archiveSelect = m_conn.prepareStatement("SELECT `imageFile` FROM `archive_resources` WHERE `identifier` = ?");
-            PreparedStatement queueInsert = m_conn.prepareStatement("INSERT INTO `export_queue` ( `archiveFilePath`, `exportFilePath` ) values (?, ?)");
 
             // Fetch paths for identifiers
             for( int i = 0; i < m_identifiers.size(); i++ ) {
@@ -58,9 +57,12 @@ public class ExportThread extends ImageServerThread {
                 if( rs.next() ) {
                     File imageFile = new File(rs.getString("imageFile"));
 
+                    // Insert entry into export queue
+                    PreparedStatement queueInsert = m_conn.prepareStatement("INSERT INTO `export_queue` ( `archiveFilePath`, `exportFilePath` ) values (?, ?)");
                     queueInsert.setString(1, imageFile.getAbsolutePath());
                     queueInsert.setString(2, m_exportPath + imageFile.getName() );
                     queueInsert.executeUpdate();
+                    queueInsert.close();
                 }
                 else {
                     this.messageListeners(identifier, "Unable to find file for identifier");
@@ -68,10 +70,9 @@ public class ExportThread extends ImageServerThread {
                 rs.close();
             }
 
-            // Select all files waiting for export
-            PreparedStatement queueStmt = m_conn.prepareStatement("SELECT * FROM `export_queue` LIMIT 1");
-            PreparedStatement queueDeleteStmt = m_conn.prepareStatement("DELETE FROM `export_queue` WHERE `eq_id` = ?");
             while( true ) {
+                // Select all files waiting for export
+                PreparedStatement queueStmt = m_conn.prepareStatement("SELECT * FROM `export_queue` LIMIT 1");
                 ResultSet rs = queueStmt.executeQuery();
                 
                 // Check if no more entries are left
@@ -83,15 +84,17 @@ public class ExportThread extends ImageServerThread {
                 
                 // Close resultset to release the table
                 rs.close();
+                queueStmt.close();
                 
                 try {
                     // Copy file to destination
                     Utilities.copyFile(archiveFilePath, exportFilePath);
 
                     // Remove entry from export queue
+                    PreparedStatement queueDeleteStmt = m_conn.prepareStatement("DELETE FROM `export_queue` WHERE `eq_id` = ?");
                     queueDeleteStmt.setInt(1, eq_id);
                     queueDeleteStmt.executeUpdate();
-                    m_conn.commit();
+                    queueDeleteStmt.close();
                 }
                 catch( Exception e ) {
                     this.messageListeners("Unable to copy file [" + eq_id + "] to export target: " + e.getMessage());
