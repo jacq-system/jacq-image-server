@@ -364,7 +364,7 @@ public class ImageServer extends HttpServlet {
             stat.setString(1, String.valueOf(cutoff_date) );
             ResultSet rs = stat.executeQuery();
             while(rs.next()) {
-                threads.put( rs.getString("it_id"), rs.getString("starttime") );
+                threads.put( rs.getString("t_id"), rs.getString("starttime") );
             }
             rs.close();
             stat.close();
