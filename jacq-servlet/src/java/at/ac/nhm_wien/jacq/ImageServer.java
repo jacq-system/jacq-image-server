@@ -346,25 +346,50 @@ public class ImageServer extends HttpServlet {
     }
     
     /**
-     * List all import threads
+     * Get a list of threads (after a certain date, optionally filtered by type)
      */
-    public void x_listImportThreads( JSONArray params ) {
-        listImportThreads( params.getInt(0) );
+    public void x_listThreads( JSONArray params ) {
+        if( params.size() > 1 ) {
+            listThreads(params.getInt(0), params.getInt(1));
+        }
+        // By default do not filter by thread type
+        else {
+            listThreads(params.getInt(0), 0);
+        }
     }
     
     /**
      * List all import threads
      * @param cutoff_date threads older than cutoff_date wont be returned
+     * @param type limit returned threads to a certain type
      */
-    private void listImportThreads( int cutoff_date ) {
+    private void listThreads( int cutoff_date, int type ) {
         try {
             JSONObject threads = new JSONObject();
+
+            // Prepare statement
+            PreparedStatement stat = null;
+            // Check if we have to filter by type
+            if( type > 0 ) {
+                stat = m_conn.prepareStatement("SELECT `t_id`, `starttime`, `endtime`, `type` FROM `threads` WHERE `starttime` >= ? AND `type` = ? ORDER BY `thread_id`");
+                stat.setInt(2, type);
+            }
+            else {
+                stat = m_conn.prepareStatement("SELECT `t_id`, `starttime`, `endtime`, `type` FROM `threads` WHERE `starttime` >= ? ORDER BY `thread_id`");
+            }
+            stat.setInt(1, cutoff_date);
             
-            PreparedStatement stat = m_conn.prepareStatement("SELECT `t_id`, `starttime` FROM `threads` WHERE `starttime` >= ? AND `type` = 1 ORDER BY `thread_id`");
-            stat.setString(1, String.valueOf(cutoff_date) );
+            // Fetch all fitting threads
             ResultSet rs = stat.executeQuery();
             while(rs.next()) {
-                threads.put( rs.getString("t_id"), rs.getString("starttime") );
+                // Combine thread related information in an object
+                JSONObject threadInfo = new JSONObject();
+                threadInfo.put("starttime", rs.getInt("starttime"));
+                threadInfo.put("endtime", rs.getInt("endtime"));
+                threadInfo.put("type", rs.getInt("type"));
+                
+                // Add thread info to stack
+                threads.put( rs.getString("t_id"), threadInfo );
             }
             rs.close();
             stat.close();
