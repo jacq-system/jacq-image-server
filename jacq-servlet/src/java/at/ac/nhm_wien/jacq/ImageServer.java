@@ -482,7 +482,7 @@ public class ImageServer extends HttpServlet implements ThreadListener {
                 m_exportThread.registerListener(this);
                 
                 // Insert start entry into database and fetch internal thread id
-                PreparedStatement etInsert = m_conn.prepareStatement( "INSERT INTO `export_threads` ( `thread_id`, `starttime`, `type` ) values ( ?, ?, ? )" );
+                PreparedStatement etInsert = m_conn.prepareStatement( "INSERT INTO `threads` ( `thread_id`, `starttime`, `type` ) values ( ?, ?, ? )" );
                 etInsert.setLong(1, m_exportThread.getId());
                 etInsert.setLong(2, System.currentTimeMillis() / 1000);
                 etInsert.setInt(3, m_exportThread.getThread_type());
