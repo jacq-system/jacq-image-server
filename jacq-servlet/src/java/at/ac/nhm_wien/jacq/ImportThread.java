@@ -19,7 +19,7 @@ import java.util.Map;
 public class ImportThread extends ImageServerThread {
 
     public ImportThread() throws Exception {
-        super(2);
+        super(1);
     }
 
     @Override

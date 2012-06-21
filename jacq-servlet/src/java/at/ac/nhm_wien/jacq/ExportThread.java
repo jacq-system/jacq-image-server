@@ -23,7 +23,7 @@ public class ExportThread extends ImageServerThread {
      * @param identifiers 
      */
     public ExportThread( String exportPath, JSONArray identifiers ) throws Exception {
-        super(1);
+        super(2);
         
         m_exportPath = exportPath;
         m_identifiers = identifiers;

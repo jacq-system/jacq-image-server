@@ -74,20 +74,6 @@ public class ImageServer extends HttpServlet {
             }
             rs.close();
             stat.close();
-            // Check for import-log table
-            rs = stat.executeQuery("SELECT name FROM sqlite_master WHERE name = 'import_logs' AND type = 'table'");
-            if( !rs.next() ) {
-                stat.executeUpdate("CREATE table `import_logs` ( `il_id` INTEGER CONSTRAINT `il_id_pk` PRIMARY KEY AUTOINCREMENT, `it_id` INTEGER, `logtime` INTEGER DEFAULT 0, `identifier` TEXT, `message` TEXT )" );
-            }
-            rs.close();
-            stat.close();
-            // Check for thread table
-            rs = stat.executeQuery("SELECT name FROM sqlite_master WHERE name = 'import_threads' AND type = 'table'");
-            if( !rs.next() ) {
-                stat.executeUpdate("CREATE table `import_threads` ( `it_id` INTEGER CONSTRAINT `it_id_pk` PRIMARY KEY AUTOINCREMENT, `thread_id` INTEGER, `starttime` INTEGER DEFAULT 0, `endtime` INTEGER DEFAULT 0 )" );
-            }
-            rs.close();
-            stat.close();
             // Check for archive resources table
             rs = stat.executeQuery("SELECT name FROM sqlite_master WHERE name = 'archive_resources' AND type = 'table'");
             if( !rs.next() ) {
@@ -374,7 +360,7 @@ public class ImageServer extends HttpServlet {
         try {
             JSONObject threads = new JSONObject();
             
-            PreparedStatement stat = m_conn.prepareStatement("SELECT `it_id`, `starttime` FROM `import_threads` WHERE `starttime` >= ? ORDER BY `thread_id`");
+            PreparedStatement stat = m_conn.prepareStatement("SELECT `t_id`, `starttime` FROM `threads` WHERE `starttime` >= ? AND `type` = 1 ORDER BY `thread_id`");
             stat.setString(1, String.valueOf(cutoff_date) );
             ResultSet rs = stat.executeQuery();
             while(rs.next()) {
@@ -400,13 +386,13 @@ public class ImageServer extends HttpServlet {
     
     /**
      * Returns a list of log messages for a given thread-id
-     * @param thread_id 
+     * @param it_id 
      */
     private void listImportLogs( int it_id ) {
         try {
             JSONArray logs = new JSONArray();
             
-            PreparedStatement stat = m_conn.prepareStatement("SELECT `logtime`, `identifier`, `message` FROM `import_logs` WHERE `it_id` = ? ORDER BY `logtime` ASC");
+            PreparedStatement stat = m_conn.prepareStatement("SELECT `logtime`, `identifier`, `message` FROM `thread_logs` WHERE `t_id` = ? ORDER BY `logtime` ASC");
             stat.setString(1, String.valueOf(it_id) );
             ResultSet rs = stat.executeQuery();
             while(rs.next()) {
