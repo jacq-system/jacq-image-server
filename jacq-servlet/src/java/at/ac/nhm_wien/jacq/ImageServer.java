@@ -623,7 +623,6 @@ public class ImageServer extends HttpServlet implements ThreadListener {
             threadUpdate.setInt(2, t_id);
             threadUpdate.executeUpdate();
             threadUpdate.close();
-            m_conn.commit();
         }
         catch( Exception e ) {
             System.err.println( "Unable to update thread table [" + thread.getThread_id() + "]" );
@@ -649,7 +648,6 @@ public class ImageServer extends HttpServlet implements ThreadListener {
             logInsert.setString(4, message);
             logInsert.executeUpdate();
             logInsert.close();
-            m_conn.commit();
         }
         catch( Exception e ) {
             // If something went wrong, at least log the message to output
