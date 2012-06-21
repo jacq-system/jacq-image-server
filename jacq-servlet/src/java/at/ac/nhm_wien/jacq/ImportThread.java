@@ -213,15 +213,7 @@ public class ImportThread extends ImageServerThread {
 
                     // Write import errors to application server log (for tracing errors)
                     e.printStackTrace();
-
-                    // Log this issue
-                    PreparedStatement logStat = m_conn.prepareStatement( "INSERT INTO `import_logs` ( `it_id`, `logtime`, `identifier`, `message` ) values(?, ?, ?, ?)" );
-                    logStat.setInt(1,this.getThread_id());
-                    logStat.setString(2, String.valueOf(System.currentTimeMillis() / 1000) );
-                    logStat.setString(3, identifier);
-                    logStat.setString(4, e.getMessage() );
-                    logStat.executeUpdate();
-                    logStat.close();
+                    this.logMessage(identifier, e.getMessage());
 
                     // Commit the log message
                     m_conn.commit();
