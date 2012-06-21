@@ -17,21 +17,16 @@ import net.sf.json.JSONArray;
 public class ExportThread extends ImageServerThread {
     private String m_exportPath = null;
     private JSONArray m_identifiers = null;
-    private Connection m_conn = null;
 
-    @Override
-    public int getThread_type() {
-        return 1;
-    }
-    
     /**
      * Create thread and pass list of identifier to export
      * @param identifiers 
      */
-    public ExportThread( String exportPath, JSONArray identifiers, Connection p_conn ) {
+    public ExportThread( String exportPath, JSONArray identifiers ) throws Exception {
+        super(1);
+        
         m_exportPath = exportPath;
         m_identifiers = identifiers;
-        m_conn = p_conn;
         
         // Check for trailing slash
         if( !m_exportPath.endsWith("/") ) m_exportPath += "/";
@@ -65,10 +60,11 @@ public class ExportThread extends ImageServerThread {
                     queueInsert.close();
                 }
                 else {
-                    this.messageListeners(identifier, "Unable to find file for identifier");
+                    this.logMessage(identifier, "Unable to find file for identifier");
                 }
                 rs.close();
             }
+            archiveSelect.close();
 
             while( true ) {
                 // Select all files waiting for export
@@ -97,16 +93,16 @@ public class ExportThread extends ImageServerThread {
                     queueDeleteStmt.close();
                 }
                 catch( Exception e ) {
-                    this.messageListeners("Unable to copy file [" + eq_id + "] to export target: " + e.getMessage());
+                    this.logMessage("Unable to copy file [" + eq_id + "] to export target: " + e.getMessage());
                 }
             }
         }
         catch( Exception e ) {
-            this.messageListeners(e.getMessage());
+            this.logMessage(e.getMessage());
             e.printStackTrace();
         }
         
-        // Let listeners know that we are done
-        notifyListeners();
+        // Make sure the super function runs as well (which does the cleanup)
+        super.run();
     }
 }
