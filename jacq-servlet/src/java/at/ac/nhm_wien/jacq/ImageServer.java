@@ -547,7 +547,7 @@ public class ImageServer extends HttpServlet {
     private void forceImport(String identifier) {
         try {
             // Check import directory for identifier
-            HashMap<String,String> importContent = listDirectory(m_properties.getProperty("ImageServer.importDirectory"));
+            HashMap<String,String> importContent = Utilities.listDirectory(m_properties.getProperty("ImageServer.importDirectory"));
             String filePath = null;
             
             Iterator<Map.Entry<String,String>> icIt = importContent.entrySet().iterator();
@@ -637,7 +637,7 @@ public class ImageServer extends HttpServlet {
                 // If no items are waiting, fetch a list of fresh entries from the file-system
                 if( iqCount <= 0 ) {
                     // Get a list of images to import
-                    HashMap<String,String> importContent = listDirectory(m_properties.getProperty("ImageServer.importDirectory"));
+                    HashMap<String,String> importContent = Utilities.listDirectory(m_properties.getProperty("ImageServer.importDirectory"));
 
                     // Cache list in database table
                     queueStat = m_conn.prepareStatement("INSERT INTO `import_queue` (`identifier`, `filePath`) values (?, ?)");
@@ -855,7 +855,7 @@ public class ImageServer extends HttpServlet {
      */
     private void rescanDjatokaImagesDirectory() {
         try {
-            HashMap<String,String> dirContent = listDirectory(m_properties.getProperty("ImageServer.resourcesDirectory"));
+            HashMap<String,String> dirContent = Utilities.listDirectory(m_properties.getProperty("ImageServer.resourcesDirectory"));
 
             // Cleanup old entries
             Statement stat = m_conn.createStatement();
@@ -884,30 +884,6 @@ public class ImageServer extends HttpServlet {
             m_response.element("result", "");
             m_response.element("error", e.getMessage());
         }
-    }
-    
-    /**
-     * Internal helper function for listing the content of a directory (+ creating IDs for the entries)
-     * @param sourceDir Directory to list
-     * @return HashMap of identifier => path entries
-     */
-    private HashMap<String,String> listDirectory( String sourceDir ) {
-        HashMap<String,String> dirContent = new HashMap<String,String>();
-        
-        File dir = new File( sourceDir );
-        File dirEntries[] = dir.listFiles();
-        
-        for(int i = 0; i < dirEntries.length; i++ ) {
-            File dirEntry = dirEntries[i];
-            if( dirEntry.isDirectory() ) {
-                dirContent.putAll( listDirectory(dirEntry.getAbsolutePath()) );
-            }
-            else {
-                dirContent.put(dirEntry.getName().substring(0, dirEntry.getName().lastIndexOf(".")), dirEntry.getAbsolutePath());
-            }
-        }
-        
-        return dirContent;
     }
     
     /**

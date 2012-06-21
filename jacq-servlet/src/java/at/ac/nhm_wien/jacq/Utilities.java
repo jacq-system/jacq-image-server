@@ -9,6 +9,7 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.HashMap;
 
 /**
  *
@@ -91,4 +92,28 @@ public class Utilities {
             throw new Exception("Copy command did not finish correctly. Returned exit code is '" + exitCode + "'");
         }
     }
+
+    /**
+     * Internal helper function for listing the content of a directory (+ creating IDs for the entries)
+     * @param sourceDir Directory to list
+     * @return HashMap of identifier => path entries
+     */
+    public static HashMap<String,String> listDirectory( String sourceDir ) {
+        HashMap<String,String> dirContent = new HashMap<String,String>();
+        
+        File dir = new File( sourceDir );
+        File dirEntries[] = dir.listFiles();
+        
+        for(int i = 0; i < dirEntries.length; i++ ) {
+            File dirEntry = dirEntries[i];
+            if( dirEntry.isDirectory() ) {
+                dirContent.putAll( listDirectory(dirEntry.getAbsolutePath()) );
+            }
+            else {
+                dirContent.put(dirEntry.getName().substring(0, dirEntry.getName().lastIndexOf(".")), dirEntry.getAbsolutePath());
+            }
+        }
+        
+        return dirContent;
+    }    
 }
