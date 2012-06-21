@@ -21,12 +21,14 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import java.io.*;
 import java.lang.reflect.Method;
 import java.sql.*;
-import java.util.*;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.Map;
+import java.util.Properties;
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
-import javax.xml.crypto.dsig.TransformException;
 import net.sf.json.JSONArray;
 import net.sf.json.JSONObject;
 
@@ -427,7 +429,24 @@ public class ImageServer extends HttpServlet {
         }
     }
     
-    private void exportImages( String p_exportPath, JSONArray p_identifier ) {
+    /**
+     * Start exporting images (callable function)
+     */
+    public void x_exportImages( JSONArray params ) {
+        exportImages("", params.getJSONArray(0));
+    }
+    
+    /**
+     * Start exporting images
+     * @param p_exportPath relative path inside the exportDirectory property
+     * @param p_identifier list of identifiers to export
+     */
+    private void exportImages( String p_exportPath, JSONArray p_identifiers ) {
+        // Check if thread is still alive
+        if( m_exportThread != null && !m_exportThread.isAlive() ) {
+            m_exportThread = null;
+        }
+        
         // Check for export thread
         if( m_exportThread == null ) {
             try {
@@ -445,7 +464,12 @@ public class ImageServer extends HttpServlet {
                 }
                 
                 // Create new export thread
-                m_exportThread = new ExportThread(exportPath + p_exportPath, p_identifier, m_conn);
+                m_exportThread = new ExportThread(exportPath + p_exportPath, p_identifiers, m_conn);
+                m_exportThread.start();
+
+                // We finished successfully if we reach here
+                m_response.put("error", "");
+                m_response.put("result", m_exportThread.getId());
             }
             catch( Exception e ) {
                 m_response.put("error", e.getMessage() );
@@ -721,57 +745,52 @@ public class ImageServer extends HttpServlet {
                                     // Check if destination does not exist
                                     if( !archiveFile.exists() && archiveFile.getParentFile().canWrite() ) {
                                         // Copy the file into the archive
-                                        int exitCode = Utilities.copyFile(inputFile.getPath(), archiveFile.getPath());
-                                        if( exitCode == 0 ) {
-                                            // Compare input and archive file
-                                            if( inputFile.length() == archiveFile.length() ) {
-                                                // Check if an old entry already existed
-                                                if( status ) {
-                                                    // Mark old entry as obsolete
-                                                    PreparedStatement archiveUpdateStat = m_conn.prepareStatement("UPDATE `archive_resources` SET `obsolete` = 1 WHERE `identifier` = ?");
-                                                    archiveUpdateStat.setString(1, identifier);
-                                                    archiveUpdateStat.executeUpdate();
-                                                    archiveUpdateStat.close();
-                                                }
-                                                
-                                                // Update archive resources list
-                                                PreparedStatement archiveStat = m_conn.prepareStatement( "INSERT INTO `archive_resources` ( `identifier`, `imageFile`, `lastModified`, `size`, `it_id` ) values (?, ?, ?, ?, ?)" );
-                                                archiveStat.setString(1, identifier);
-                                                archiveStat.setString(2, archiveFile.getAbsolutePath());
-                                                archiveStat.setLong(3, inputFile.lastModified() / 1000);
-                                                archiveStat.setLong(4, inputFile.length());
-                                                archiveStat.setInt(5, it_id);
-                                                archiveStat.executeUpdate();
-                                                archiveStat.close();
-                                                
-                                                // Finally make sure our new data is written to disk
-                                                m_conn.commit();
+                                        try {
+                                            Utilities.copyFile(inputFile.getPath(), archiveFile.getPath());
 
-                                                // Remove input file
-                                                inputFile.delete();
+                                            // Check if an old entry already existed
+                                            if( status ) {
+                                                // Mark old entry as obsolete
+                                                PreparedStatement archiveUpdateStat = m_conn.prepareStatement("UPDATE `archive_resources` SET `obsolete` = 1 WHERE `identifier` = ?");
+                                                archiveUpdateStat.setString(1, identifier);
+                                                archiveUpdateStat.executeUpdate();
+                                                archiveUpdateStat.close();
                                             }
-                                            else {
-                                                throw new TransformException( "Validity check of file failed [" + inputFile.getPath() + " => " + archiveFile.getPath() + "]" );
-                                            }
+
+                                            // Update archive resources list
+                                            PreparedStatement archiveStat = m_conn.prepareStatement( "INSERT INTO `archive_resources` ( `identifier`, `imageFile`, `lastModified`, `size`, `it_id` ) values (?, ?, ?, ?, ?)" );
+                                            archiveStat.setString(1, identifier);
+                                            archiveStat.setString(2, archiveFile.getAbsolutePath());
+                                            archiveStat.setLong(3, inputFile.lastModified() / 1000);
+                                            archiveStat.setLong(4, inputFile.length());
+                                            archiveStat.setInt(5, it_id);
+                                            archiveStat.executeUpdate();
+                                            archiveStat.close();
+
+                                            // Finally make sure our new data is written to disk
+                                            m_conn.commit();
+
+                                            // Remove input file
+                                            inputFile.delete();
                                         }
-                                        else {
-                                            throw new TransformException( "Unable to move file into archive [" + inputFile.getPath() + " => " + archiveFile.getPath() + "] - exit-code [" + exitCode + "]" );
+                                        catch( Exception e ) {
+                                            throw new Exception( "Unable to move file into archive [" + inputFile.getPath() + " => " + archiveFile.getPath() + "] - Error: [" + e.getMessage() + "]" );
                                         }
                                     }
                                     else {
-                                        throw new TransformException( "File exists or cannot write archive path [" + archiveFile.getPath() + "]" );
+                                        throw new Exception( "File exists or cannot write archive path [" + archiveFile.getPath() + "]" );
                                     }
                                 }
                                 else {
-                                    throw new TransformException( "Writing file for Djatoka failed [" + outputFile.getPath() + "]" );
+                                    throw new Exception( "Writing file for Djatoka failed [" + outputFile.getPath() + "]" );
                                 }
                             }
                             else {
-                                throw new TransformException( "Watermarking image failed [" + temporaryFile.getPath() + "]" );
+                                throw new Exception( "Watermarking image failed [" + temporaryFile.getPath() + "]" );
                             }
                         }
                         else {
-                            throw new TransformException( "Import of [" + inputName + "] failed. Identifier already exists [" + identifier + "]" );
+                            throw new Exception( "Import of [" + inputName + "] failed. Identifier already exists [" + identifier + "]" );
                         }
                     }
                     catch( Exception e ) {
