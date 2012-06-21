@@ -12,6 +12,8 @@ import java.util.ArrayList;
 public abstract class ImageServerThread extends Thread {
     private ArrayList<ThreadListener> m_listeners = new ArrayList<ThreadListener>();
     private int thread_id = 0;
+    
+    public abstract int getThread_type();
 
     public int getThread_id() {
         return thread_id;
