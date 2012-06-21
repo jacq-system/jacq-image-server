@@ -43,9 +43,13 @@ public abstract class ImageServerThread extends Thread {
         if( !et_id_result.next() ) {
             throw new Exception( "Unable to log export thread." );
         }
-
+        
         // Remember internal thread id
         m_thread_id = et_id_result.getInt(1);
+
+        // Close database handlers
+        etInsert.close();
+        et_id_result.close();
     }
 
     public int getThread_type() {

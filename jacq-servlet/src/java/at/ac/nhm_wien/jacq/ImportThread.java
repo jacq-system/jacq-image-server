@@ -8,6 +8,7 @@ import java.io.File;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
@@ -29,7 +30,7 @@ public class ImportThread extends ImageServerThread {
 
             // Disable auto-commit during imports
             m_conn.setAutoCommit(false);
-
+            
             // Check if there are items waiting in the queue (e.g. due to a crash)...
             PreparedStatement queueStat = m_conn.prepareStatement("SELECT count(*) FROM `import_queue`");
             ResultSet rs = queueStat.executeQuery();
@@ -54,11 +55,12 @@ public class ImportThread extends ImageServerThread {
                     // Assign properties to statement
                     queueStat.setString(1, identifier);
                     queueStat.setString(2, inputName);
-                    queueStat.executeUpdate();
+                    queueStat.addBatch();
                 }
                 // Finally execute & commit the queue-list
-                queueStat.close();
+                queueStat.executeBatch();
                 m_conn.commit();
+                queueStat.close();
             }
 
             // Prepare statement for identifier check
