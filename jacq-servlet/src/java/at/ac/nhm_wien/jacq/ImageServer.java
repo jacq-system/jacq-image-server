@@ -36,7 +36,7 @@ import net.sf.json.JSONObject;
  *
  * @author wkoller
  */
-public class ImageServer extends HttpServlet {
+public class ImageServer extends HttpServlet implements ThreadListener {
     /**
      * Used by all classes to access the configuration settings
      */
@@ -105,6 +105,20 @@ public class ImageServer extends HttpServlet {
             rs = stat.executeQuery("SELECT name FROM sqlite_master WHERE name = 'export_queue' AND type = 'table'");
             if( !rs.next() ) {
                 stat.executeUpdate("CREATE table `export_queue` ( `eq_id` INTEGER CONSTRAINT `eq_id_pk` PRIMARY KEY AUTOINCREMENT, `archiveFilePath` TEXT, `exportFilePath` TEXT )" );
+            }
+            rs.close();
+            stat.close();
+            // Check for threads table
+            rs = stat.executeQuery("SELECT name FROM sqlite_master WHERE name = 'threads' AND type = 'table'");
+            if( !rs.next() ) {
+                stat.executeUpdate("CREATE table `threads` ( `t_id` INTEGER CONSTRAINT `t_id_pk` PRIMARY KEY AUTOINCREMENT, `thread_id` INTEGER, `starttime` INTEGER DEFAULT 0, `endtime` INTEGER DEFAULT 0, `type` INTEGER DEFAULT 0 )");
+            }
+            rs.close();
+            stat.close();
+            // Check for threads logging table
+            rs = stat.executeQuery("SELECT name FROM sqlite_master WHERE name = 'thread_logs' AND type = 'table'");
+            if( !rs.next() ) {
+                stat.executeUpdate("CREATE table `thread_logs` ( `tl_id` INTEGER CONSTRAINT `tl_id_pk` PRIMARY KEY AUTOINCREMENT, `t_id` INTEGER, `logtime` INTEGER DEFAULT 0, `identifier` TEXT DEFAULT '', `message` TEXT )");
             }
             rs.close();
             stat.close();
@@ -465,11 +479,29 @@ public class ImageServer extends HttpServlet {
                 
                 // Create new export thread
                 m_exportThread = new ExportThread(exportPath + p_exportPath, p_identifiers, m_conn);
+                m_exportThread.registerListener(this);
+                
+                // Insert start entry into database and fetch internal thread id
+                PreparedStatement etInsert = m_conn.prepareStatement( "INSERT INTO `export_threads` ( `thread_id`, `starttime`, `type` ) values ( ?, ?, ? )" );
+                etInsert.setLong(1, m_exportThread.getId());
+                etInsert.setLong(2, System.currentTimeMillis() / 1000);
+                etInsert.setInt(3, m_exportThread.getThread_type());
+                etInsert.executeUpdate();
+                
+                // Fetch auto-increment value and assign the unique number to our thread
+                ResultSet et_id_result = etInsert.getGeneratedKeys();
+                if( !et_id_result.next() ) {
+                    throw new Exception( "Unable to log export thread." );
+                }
+                
+                // Remember internal thread id
+                m_exportThread.setThread_id(et_id_result.getInt(1));
+
+                // Finally launch the thread
                 m_exportThread.start();
 
                 // We finished successfully if we reach here
-                m_response.put("error", "");
-                m_response.put("result", m_exportThread.getId());
+                m_response.put("result", m_exportThread.getThread_id());
             }
             catch( Exception e ) {
                 m_response.put("error", e.getMessage() );
@@ -573,6 +605,57 @@ public class ImageServer extends HttpServlet {
         catch( Exception e ) {
             m_response.put("error", e.getMessage());
             m_response.put("result", "");
+        }
+    }
+
+    /**
+     * Called by a thread once it finishes
+     * @param thread thread which just finished
+     */
+    public void threadCompleted(ImageServerThread thread) {
+        long endtime = System.currentTimeMillis() / 1000;
+        int t_id = thread.getThread_id();
+        
+        try {
+            // Update thread table to finish this thread
+            PreparedStatement threadUpdate = m_conn.prepareStatement("UPDATE `threads` SET `endtime` = ? WHERE `t_id` = ?");
+            threadUpdate.setLong(1, endtime);
+            threadUpdate.setInt(2, t_id);
+            threadUpdate.executeUpdate();
+            threadUpdate.close();
+            m_conn.commit();
+        }
+        catch( Exception e ) {
+            System.err.println( "Unable to update thread table [" + thread.getThread_id() + "]" );
+            e.printStackTrace();
+        }
+    }
+
+    /**
+     * Called by a thread if it has a message for logging
+     * @param thread thread which sends the message
+     * @param identifier (optional) identifier which the logging message belongs to
+     * @param message message to log
+     */
+    public void threadMessage(ImageServerThread thread, String identifier, String message) {
+        long logtime = System.currentTimeMillis() / 1000;
+        
+        try {
+            // Log the message to the database
+            PreparedStatement logInsert = m_conn.prepareStatement("INSERT INTO `thread_logs` ( `t_id`, `logtime`, `identifier`, `message` ) values (?, ?, ? ,?)");
+            logInsert.setInt(1, thread.getThread_id());
+            logInsert.setLong(2, logtime);
+            logInsert.setString(3, identifier);
+            logInsert.setString(4, message);
+            logInsert.executeUpdate();
+            logInsert.close();
+            m_conn.commit();
+        }
+        catch( Exception e ) {
+            // If something went wrong, at least log the message to output
+            System.err.println( "Unable to log threadMessage to database!" );
+            System.err.println( "[t_id: " + thread.getThread_id() + "] [ogtime: " + logtime + "] [identifier: " + identifier + "] [message: " + message + "]" );
+            e.printStackTrace();
         }
     }
     
