@@ -6,11 +6,8 @@ package at.ac.nhm_wien.jacq;
 
 import java.io.File;
 import java.sql.Connection;
-import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
-import java.util.ArrayList;
-import java.util.Iterator;
 import net.sf.json.JSONArray;
 
 /**
@@ -48,9 +45,12 @@ public class ExportThread extends Thread {
             if( rs.next() ) {
                 File imageFile = new File(rs.getString("imageFile"));
                 
-                queueStmt.setString(0, imageFile.getAbsolutePath());
-                queueStmt.setString(1, m_exportPath + imageFile.getName() );
+                queueStmt.setString(1, imageFile.getAbsolutePath());
+                queueStmt.setString(2, m_exportPath + imageFile.getName() );
                 queueStmt.executeUpdate();
+            }
+            else {
+                System.err.println( "Unable to find file for identifier [" + identifier + "]" );
             }
             rs.close();
         }
@@ -61,14 +61,39 @@ public class ExportThread extends Thread {
      */
     @Override
     public void run() {
-        // Iterate over archive files and export them
-        /*Iterator<String> afnIt = m_archiveFileNames.iterator();
-        while( afnIt.hasNext() ) {
-            String archiveFileName = afnIt.next();
-            File archiveFile = new File(archiveFileName);
+        // Select all files waiting for export
+        try {
+            PreparedStatement queueStmt = m_conn.prepareStatement("SELECT * FROM `export_queue` LIMIT 1");
+            PreparedStatement queueDeleteStmt = m_conn.prepareStatement("DELETE FROM `export_queue` WHERE `eq_id` = ?");
+            while( true ) {
+                ResultSet rs = queueStmt.executeQuery();
+                
+                // Check if no more entries are left
+                if( !rs.next() ) break;
+                
+                int eq_id = rs.getInt("eq_id");
+                String archiveFilePath = rs.getString("archiveFilePath");
+                String exportFilePath = rs.getString("exportFilePath");
+                
+                // Close resultset to release the table
+                rs.close();
+                
+                try {
+                    // Copy file to destination
+                    Utilities.copyFile(archiveFilePath, exportFilePath);
 
-            // Copy file to export path
-            int exitCode = Utilities.copyFile(archiveFileName, m_exportPath + archiveFile.getName());
-        }*/
+                    // Remove entry from export queue
+                    queueDeleteStmt.setInt(1, eq_id);
+                    queueDeleteStmt.executeUpdate();
+                    m_conn.commit();
+                }
+                catch( Exception e ) {
+                    System.err.println( "Unable to copy file [" + eq_id + "] to export target: " + e.getMessage() );
+                }
+            }
+        }
+        catch( Exception e ) {
+            e.printStackTrace();
+        }
     }
 }
