@@ -50,12 +50,12 @@ public class ExportThread extends ImageServerThread {
 
                 // Check if we have a result
                 if( rs.next() ) {
-                    File imageFile = new File(rs.getString("imageFile"));
+                    File archiveFile = new File(ImageServer.m_properties.getProperty("ImageServer.archiveDirectory"), rs.getString("imageFile"));
 
                     // Insert entry into export queue
                     PreparedStatement queueInsert = m_conn.prepareStatement("INSERT INTO `export_queue` ( `archiveFilePath`, `exportFilePath` ) values (?, ?)");
-                    queueInsert.setString(1, imageFile.getAbsolutePath());
-                    queueInsert.setString(2, m_exportPath + imageFile.getName() );
+                    queueInsert.setString(1, archiveFile.getAbsolutePath() );
+                    queueInsert.setString(2, m_exportPath + archiveFile.getName() );
                     queueInsert.executeUpdate();
                     queueInsert.close();
                 }
@@ -75,7 +75,7 @@ public class ExportThread extends ImageServerThread {
                 if( !rs.next() ) break;
                 
                 int eq_id = rs.getInt("eq_id");
-                String archiveFilePath = ImageServer.m_properties.getProperty("ImageServer.archiveDirectory") + rs.getString("archiveFilePath");
+                String archiveFilePath =  rs.getString("archiveFilePath");
                 String exportFilePath = rs.getString("exportFilePath");
                 
                 // Close resultset to release the table
@@ -85,16 +85,16 @@ public class ExportThread extends ImageServerThread {
                 try {
                     // Copy file to destination
                     Utilities.copyFile(archiveFilePath, exportFilePath);
-
-                    // Remove entry from export queue
-                    PreparedStatement queueDeleteStmt = m_conn.prepareStatement("DELETE FROM `export_queue` WHERE `eq_id` = ?");
-                    queueDeleteStmt.setInt(1, eq_id);
-                    queueDeleteStmt.executeUpdate();
-                    queueDeleteStmt.close();
                 }
                 catch( Exception e ) {
-                    this.logMessage("Unable to copy file [" + eq_id + "] to export target: " + e.getMessage());
+                    this.logMessage("Unable to copy file [" + archiveFilePath + "] to export target: " + e.getMessage());
                 }
+
+                // Remove entry from export queue
+                PreparedStatement queueDeleteStmt = m_conn.prepareStatement("DELETE FROM `export_queue` WHERE `eq_id` = ?");
+                queueDeleteStmt.setInt(1, eq_id);
+                queueDeleteStmt.executeUpdate();
+                queueDeleteStmt.close();
             }
         }
         catch( Exception e ) {
