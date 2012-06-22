@@ -33,25 +33,34 @@ public class Utilities {
             return null;
         }
     }
+    
+    /**
+     * Creates the correctly formatted directory name for a given modification date
+     * @param p_modificationDate modification date to creaste the directory name for
+     * @return formatted directory name
+     */
+    public static String getDirectoryName(long p_modificationDate) {
+        // Create formatted output directory
+        SimpleDateFormat yearFormat = new SimpleDateFormat("yyyy/yyMMdd/");
+        Date fileDate = new Date(p_modificationDate);
+        return yearFormat.format(fileDate);
+    }
 
     /**
      * Small helper function which creates an output directory according to our
      * formatting rules
      *
      * @param p_baseDir Base dir for directory creation
-     * @param p_modificationDate Modification time which is used for directory
+     * @param archiveDir sub-directory within the archive
      * naming
      * @return String Returns the name of the output directory on success (with
      * trailing slash)
      * @throws TransformException
      */
-    public static String createDirectory(String p_baseDir, long p_modificationDate) throws Exception {
+    public static String createDirectory(String p_baseDir, String archiveDir) throws Exception {
         File baseDir = new File(p_baseDir);
         if (baseDir.exists() && baseDir.isDirectory() && baseDir.canWrite()) {
-            // Create formatted output directory
-            SimpleDateFormat yearFormat = new SimpleDateFormat("yyyy/yyMMdd/");
-            Date now = new Date(p_modificationDate);
-            File subDir = new File(baseDir, yearFormat.format(now));
+            File subDir = new File(baseDir, archiveDir);
 
             // Check if subDir already exists or try to create it
             if (subDir.exists() || subDir.mkdirs()) {

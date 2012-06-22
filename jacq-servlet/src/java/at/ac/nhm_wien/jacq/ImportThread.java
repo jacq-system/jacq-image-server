@@ -123,7 +123,7 @@ public class ImportThread extends ImageServerThread {
                         if( temporaryFile.exists() ) {
                             // Create output directory for djatoka
                             File inputFile = new File(inputName);
-                            String outputName = Utilities.createDirectory(ImageServer.m_properties.getProperty("ImageServer.resourcesDirectory"), inputFile.lastModified()) + identifier + ".jp2";
+                            String outputName = Utilities.createDirectory(ImageServer.m_properties.getProperty("ImageServer.resourcesDirectory"), Utilities.getDirectoryName(inputFile.lastModified())) + identifier + ".jp2";
 
                             // Convert new image
                             Process compressProc = new ProcessBuilder( ImageServer.m_properties.getProperty("ImageServer.dCompress"), "-i", temporaryName, "-o", outputName ).start();
@@ -156,7 +156,8 @@ public class ImportThread extends ImageServerThread {
                                 resourcesStat.close();
 
                                 // Create archive directory
-                                File archiveFile = new File( Utilities.createDirectory(ImageServer.m_properties.getProperty("ImageServer.archiveDirectory"), inputFile.lastModified() ) + inputFile.getName() );
+                                String archiveDirectory = Utilities.getDirectoryName(inputFile.lastModified());
+                                File archiveFile = new File( Utilities.createDirectory(ImageServer.m_properties.getProperty("ImageServer.archiveDirectory"), archiveDirectory ) + inputFile.getName() );
 
                                 // Check if destination does not exist
                                 if( !archiveFile.exists() && archiveFile.getParentFile().canWrite() ) {
@@ -176,8 +177,8 @@ public class ImportThread extends ImageServerThread {
                                         // Update archive resources list
                                         PreparedStatement archiveStat = m_conn.prepareStatement( "INSERT INTO `archive_resources` ( `identifier`, `imageFile`, `lastModified`, `size`, `it_id` ) values (?, ?, ?, ?, ?)" );
                                         archiveStat.setString(1, identifier);
-                                        archiveStat.setString(2, archiveFile.getAbsolutePath());
-                                        archiveStat.setLong(3, inputFile.lastModified() / 1000);
+                                        archiveStat.setString(2, archiveDirectory + archiveFile.getName());
+                                        archiveStat.setLong(3, inputFile.lastModified() / 1000);    // NOTE: Using inputFile here to make sure we get the correct information
                                         archiveStat.setLong(4, inputFile.length());
                                         archiveStat.setInt(5, this.getThread_id());
                                         archiveStat.executeUpdate();

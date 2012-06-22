@@ -629,6 +629,7 @@ public class ImageServer extends HttpServlet {
     
     /**
      * Refresh the image metadata for all files which do not have the lastModified or size attribute set yet
+     * @deprecated Does not work at the current stage, needs modification to take relative archive path into account
      */
     private void refreshImageMetadata() {
         try {

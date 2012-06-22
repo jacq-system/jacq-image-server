@@ -75,7 +75,7 @@ public class ExportThread extends ImageServerThread {
                 if( !rs.next() ) break;
                 
                 int eq_id = rs.getInt("eq_id");
-                String archiveFilePath = rs.getString("archiveFilePath");
+                String archiveFilePath = ImageServer.m_properties.getProperty("ImageServer.archiveDirectory") + rs.getString("archiveFilePath");
                 String exportFilePath = rs.getString("exportFilePath");
                 
                 // Close resultset to release the table
