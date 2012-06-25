@@ -541,25 +541,33 @@ public class ImageServer extends HttpServlet {
      * Returns a list of file identifiers for a given specimen
      */
     public void x_listSpecimenImages( JSONArray params ) {
-        listSpecimenImages( params.getInt(0), params.getString(1) );
+        if( params.size() >= 3 ) {
+            listSpecimenImages( params.getInt(0), params.getString(1), true );
+        }
+        else {
+            listSpecimenImages( params.getInt(0), params.getString(1), false );
+        }
     }
     
     /**
      * Returns a list of file identifiers for a given specimen
      * @param specimen_id Specimen ID
      * @param herbar_number Herbarnumber of specimen
+     * @param excludeTabObs Exclude tab and obs entries
      */
-    private void listSpecimenImages( int specimen_id, String herbar_number ) {
+    private void listSpecimenImages( int specimen_id, String herbar_number, boolean excludeTabObs) {
         try {
             // Cleanup passed herbar_number
             herbar_number = herbar_number.replaceAll("%", "\\%");
             
             // Create all possible variants of filenaming
             JSONArray identifiers = new JSONArray();
-            identifiers.add("tab_" + String.valueOf(specimen_id) );
-            identifiers.add("obs_" + String.valueOf(specimen_id) );
-            identifiers.add("tab_" + String.valueOf(specimen_id) + "_%" );
-            identifiers.add("obs_" + String.valueOf(specimen_id) + "_%" );
+            if( !excludeTabObs ) {
+                identifiers.add("tab_" + String.valueOf(specimen_id) );
+                identifiers.add("obs_" + String.valueOf(specimen_id) );
+                identifiers.add("tab_" + String.valueOf(specimen_id) + "_%" );
+                identifiers.add("obs_" + String.valueOf(specimen_id) + "_%" );
+            }
             identifiers.add(herbar_number);
             identifiers.add(herbar_number + "_%");
             identifiers.add(herbar_number + "A");
