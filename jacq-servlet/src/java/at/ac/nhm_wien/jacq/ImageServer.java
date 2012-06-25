@@ -541,7 +541,7 @@ public class ImageServer extends HttpServlet {
      * Returns a list of file identifiers for a given specimen
      */
     public void x_listSpecimenImages( JSONArray params ) {
-        if( params.size() >= 3 ) {
+        if( params.size() >= 3 && params.getBoolean(2) ) {
             listSpecimenImages( params.getInt(0), params.getString(1), true );
         }
         else {
