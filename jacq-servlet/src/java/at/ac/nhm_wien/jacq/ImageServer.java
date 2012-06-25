@@ -24,6 +24,7 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.Statement;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
@@ -34,6 +35,7 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import net.sf.json.JSONArray;
 import net.sf.json.JSONObject;
+import org.apache.commons.lang.StringUtils;
 
 /**
  *
@@ -492,6 +494,50 @@ public class ImageServer extends HttpServlet {
     }
     
     /**
+     * Gets passed a list of resource-identifiers which are then searched for
+     * @param identifiers List of identifiers to search for
+     */
+    private void listResources( JSONArray identifiers ) {
+        try {
+            JSONArray resources = new JSONArray();
+            
+            // Check if we have at least one identifier
+            if( identifiers.size() < 1 ) {
+                throw new Exception( "No identifiers passed" );
+            }
+            
+            // Convert conditions to ArrayList
+            ArrayList<String> conditions = new ArrayList<String>();
+            for( int i = 0; i < identifiers.size(); i++ ) {
+                conditions.add("`identifier` LIKE ? ESCAPE '\\'");
+            }
+            // Create plain string where condition
+            String whereConditions = StringUtils.join(conditions, " OR ");
+            
+            // Prepare the actual statement
+            PreparedStatement stat = m_conn.prepareStatement("SELECT `identifier` FROM `resources` WHERE " + whereConditions + " ORDER BY `identifier` ASC");
+            for( int i = 0; i < identifiers.size(); i++ ) {
+                // Add string (but make sure the underscore is masked)
+                stat.setString(i + 1, identifiers.getString(i).replaceAll("_", "\\_"));
+            }
+
+            // Execute the query & fetch all found files
+            ResultSet rs = stat.executeQuery();
+            while(rs.next()) {
+                resources.add( rs.getString("identifier") );
+            }
+            rs.close();
+            stat.close();
+            
+            m_response.put("result", resources);
+        }
+        catch( Exception e ) {
+            m_response.put("error", e.getMessage());
+            m_response.put("result", "");
+        }
+    }
+    
+    /**
      * Returns a list of file identifiers for a given specimen
      */
     public void x_listSpecimenImages( JSONArray params ) {
@@ -505,23 +551,22 @@ public class ImageServer extends HttpServlet {
      */
     private void listSpecimenImages( int specimen_id, String herbar_number ) {
         try {
-            JSONArray images = new JSONArray();
+            // Cleanup passed herbar_number
+            herbar_number = herbar_number.replaceAll("%", "\\%");
             
-            // Try to find all possible variants of this image
-            PreparedStatement stat = m_conn.prepareStatement("SELECT `identifier` FROM `resources` WHERE `identifier` = ? OR `identifier` = ? OR `identifier` = ? OR `identifier` LIKE ? ESCAPE '\\' ORDER BY `identifier` ASC");
-            stat.setString(1, "tab_" + String.valueOf(specimen_id));
-            stat.setString(2, "obs_" + String.valueOf(specimen_id));
-            stat.setString(3, herbar_number );
-            stat.setString(4, herbar_number + "\\_%" );
+            // Create all possible variants of filenaming
+            JSONArray identifiers = new JSONArray();
+            identifiers.add("tab_" + String.valueOf(specimen_id) );
+            identifiers.add("obs_" + String.valueOf(specimen_id) );
+            identifiers.add("tab_" + String.valueOf(specimen_id) + "_%" );
+            identifiers.add("obs_" + String.valueOf(specimen_id) + "_%" );
+            identifiers.add(herbar_number);
+            identifiers.add(herbar_number + "_%");
+            identifiers.add(herbar_number + "A");
+            identifiers.add(herbar_number + "B");
             
-            ResultSet rs = stat.executeQuery();
-            while(rs.next()) {
-                images.add( rs.getString("identifier") );
-            }
-            rs.close();
-            stat.close();
-            
-            m_response.put("result", images);
+            // Finally list all resources using the identifier
+            this.listResources(identifiers);
         }
         catch( Exception e ) {
             m_response.put("error", e.getMessage());
