@@ -38,7 +38,7 @@
  </head>
 
  <body>
-     <div id="identifier_select_div" style="position: absolute; top: 50px; left: 10px; background-color: #222222; z-index: 1; text-align: center; opacity: 0.6;">
+     <div id="identifier_select_div" style="position: absolute; top: 50px; left: 10px; background-color: #222222; z-index: 1; text-align: center;">
          <select id="identifier_select" onchange="identifier_select_onchange();" style="margin-bottom: 2px;"></select>
          <br />
      </div>
@@ -93,7 +93,7 @@
         {
             src: server + '?url_ver=Z39.88-2004&rft_id=' + identifiers[i] + '&svc_id=info:lanl-repo/svc/getRegion&svc_val_fmt=info:ofi/fmt:kev:mtx:jpeg2000&svc.format=image/jpeg&svc.scale=160,0',
             styles: {
-                margin: '2px',
+                margin: '2px 2px 0px 2px',
                 cursor: 'pointer'
             },
             id: identifiers[i]
@@ -110,8 +110,17 @@
             identifier_switch( this.id );
         } );
         
-        // Add break so that thumbnails are aligned vertically
-        (new Element( 'br' )).inject(selectDivEl);
+        // Add a footer div which contains the image filename
+        var thumbnailLabel = new Element( 'div', {
+            styles: {
+                'margin-bottom': '5px',
+                'text-align': 'center',
+                'color': '#FFFFFF',
+                'font-weight': 'bold'
+            },
+            html: identifiers[i]
+        } );
+        thumbnailLabel.inject(selectDivEl);
     }
     // Set correct value as selected 
     selectEl.set( 'value', images );
