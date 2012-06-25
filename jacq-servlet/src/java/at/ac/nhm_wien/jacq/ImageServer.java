@@ -373,11 +373,11 @@ public class ImageServer extends HttpServlet {
             PreparedStatement stat = null;
             // Check if we have to filter by type
             if( type > 0 ) {
-                stat = m_conn.prepareStatement("SELECT `t_id`, `starttime`, `endtime`, `type` FROM `threads` WHERE `starttime` >= ? AND `type` = ? ORDER BY `thread_id`");
+                stat = m_conn.prepareStatement("SELECT `t_id`, `starttime`, `endtime`, `type` FROM `threads` WHERE `starttime` >= ? AND `type` = ? ORDER BY `t_id` DESC");
                 stat.setInt(2, type);
             }
             else {
-                stat = m_conn.prepareStatement("SELECT `t_id`, `starttime`, `endtime`, `type` FROM `threads` WHERE `starttime` >= ? ORDER BY `thread_id`");
+                stat = m_conn.prepareStatement("SELECT `t_id`, `starttime`, `endtime`, `type` FROM `threads` WHERE `starttime` >= ? ORDER BY `t_id` DESC");
             }
             stat.setInt(1, cutoff_date);
             
