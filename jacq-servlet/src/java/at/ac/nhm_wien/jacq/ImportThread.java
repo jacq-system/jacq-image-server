@@ -40,27 +40,32 @@ public class ImportThread extends ImageServerThread {
 
             // If no items are waiting, fetch a list of fresh entries from the file-system
             if( iqCount <= 0 ) {
-                // Get a list of images to import
-                HashMap<String,String> importContent = Utilities.listDirectory(ImageServer.m_properties.getProperty("ImageServer.importDirectory"));
+                try {
+                    // Get a list of images to import
+                    HashMap<String,String> importContent = Utilities.listDirectory(ImageServer.m_properties.getProperty("ImageServer.importDirectory"));
 
-                // Cache list in database table
-                queueStat = m_conn.prepareStatement("INSERT INTO `import_queue` (`identifier`, `filePath`) values (?, ?)");
-                Iterator<Map.Entry<String,String>> icIt = importContent.entrySet().iterator();
-                // Cycle through results and store them in the database
-                while( icIt.hasNext() ) {
-                    Map.Entry<String,String> entry = icIt.next();
-                    String identifier = entry.getKey();
-                    String inputName = entry.getValue();
+                    // Cache list in database table
+                    queueStat = m_conn.prepareStatement("INSERT INTO `import_queue` (`identifier`, `filePath`) values (?, ?)");
+                    Iterator<Map.Entry<String,String>> icIt = importContent.entrySet().iterator();
+                    // Cycle through results and store them in the database
+                    while( icIt.hasNext() ) {
+                        Map.Entry<String,String> entry = icIt.next();
+                        String identifier = entry.getKey();
+                        String inputName = entry.getValue();
 
-                    // Assign properties to statement
-                    queueStat.setString(1, identifier);
-                    queueStat.setString(2, inputName);
-                    queueStat.addBatch();
+                        // Assign properties to statement
+                        queueStat.setString(1, identifier);
+                        queueStat.setString(2, inputName);
+                        queueStat.addBatch();
+                    }
+                    // Finally execute & commit the queue-list
+                    queueStat.executeBatch();
+                    m_conn.commit();
+                    queueStat.close();
                 }
-                // Finally execute & commit the queue-list
-                queueStat.executeBatch();
-                m_conn.commit();
-                queueStat.close();
+                catch( Exception e ) {
+                    this.logMessage("Unable to fill import-queue: " + e.getMessage());
+                }
             }
 
             // Prepare statement for identifier check
