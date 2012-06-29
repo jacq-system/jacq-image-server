@@ -165,42 +165,48 @@ public class ImportThread extends ImageServerThread {
                                 File archiveFile = new File( Utilities.createDirectory(ImageServer.m_properties.getProperty("ImageServer.archiveDirectory"), archiveDirectory ) + inputFile.getName() );
 
                                 // Check if destination does not exist
-                                if( !archiveFile.exists() && archiveFile.getParentFile().canWrite() ) {
-                                    // Copy the file into the archive
-                                    try {
-                                        Utilities.copyFile(inputFile.getPath(), archiveFile.getPath());
+                                if( !archiveFile.exists() ) {
+                                    // Check if the archive path can be written
+                                    if( archiveFile.getParentFile().canWrite() ) {
+                                        // Copy the file into the archive
+                                        try {
+                                            Utilities.copyFile(inputFile.getPath(), archiveFile.getPath());
 
-                                        // Check if an old entry already existed
-                                        if( status ) {
-                                            // Mark old entry as obsolete
-                                            PreparedStatement archiveUpdateStat = m_conn.prepareStatement("UPDATE `archive_resources` SET `obsolete` = 1 WHERE `identifier` = ?");
-                                            archiveUpdateStat.setString(1, identifier);
-                                            archiveUpdateStat.executeUpdate();
-                                            archiveUpdateStat.close();
+                                            // Check if an old entry already existed
+                                            if( status ) {
+                                                // Mark old entry as obsolete
+                                                PreparedStatement archiveUpdateStat = m_conn.prepareStatement("UPDATE `archive_resources` SET `obsolete` = 1 WHERE `identifier` = ?");
+                                                archiveUpdateStat.setString(1, identifier);
+                                                archiveUpdateStat.executeUpdate();
+                                                archiveUpdateStat.close();
+                                            }
+
+                                            // Update archive resources list
+                                            PreparedStatement archiveStat = m_conn.prepareStatement( "INSERT INTO `archive_resources` ( `identifier`, `imageFile`, `lastModified`, `size`, `it_id` ) values (?, ?, ?, ?, ?)" );
+                                            archiveStat.setString(1, identifier);
+                                            archiveStat.setString(2, archiveDirectory + archiveFile.getName());
+                                            archiveStat.setLong(3, inputFile.lastModified() / 1000);    // NOTE: Using inputFile here to make sure we get the correct information
+                                            archiveStat.setLong(4, inputFile.length());
+                                            archiveStat.setInt(5, this.getThread_id());
+                                            archiveStat.executeUpdate();
+                                            archiveStat.close();
+
+                                            // Finally make sure our new data is written to disk
+                                            m_conn.commit();
+
+                                            // Remove input file
+                                            inputFile.delete();
                                         }
-
-                                        // Update archive resources list
-                                        PreparedStatement archiveStat = m_conn.prepareStatement( "INSERT INTO `archive_resources` ( `identifier`, `imageFile`, `lastModified`, `size`, `it_id` ) values (?, ?, ?, ?, ?)" );
-                                        archiveStat.setString(1, identifier);
-                                        archiveStat.setString(2, archiveDirectory + archiveFile.getName());
-                                        archiveStat.setLong(3, inputFile.lastModified() / 1000);    // NOTE: Using inputFile here to make sure we get the correct information
-                                        archiveStat.setLong(4, inputFile.length());
-                                        archiveStat.setInt(5, this.getThread_id());
-                                        archiveStat.executeUpdate();
-                                        archiveStat.close();
-
-                                        // Finally make sure our new data is written to disk
-                                        m_conn.commit();
-
-                                        // Remove input file
-                                        inputFile.delete();
+                                        catch( Exception e ) {
+                                            throw new Exception( "Unable to move file into archive [" + inputFile.getPath() + " => " + archiveFile.getPath() + "] - Error: [" + e.getMessage() + "]" );
+                                        }
                                     }
-                                    catch( Exception e ) {
-                                        throw new Exception( "Unable to move file into archive [" + inputFile.getPath() + " => " + archiveFile.getPath() + "] - Error: [" + e.getMessage() + "]" );
+                                    else {
+                                        throw new Exception( "Unable to write archive directory [" + archiveFile.getPath() + "]" );
                                     }
                                 }
                                 else {
-                                    throw new Exception( "File exists or cannot write archive path [" + archiveFile.getPath() + "]" );
+                                    throw new Exception( "File exists already in archive [" + archiveFile.getPath() + "]" );
                                 }
                             }
                             else {
