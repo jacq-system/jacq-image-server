@@ -621,6 +621,7 @@ public class ImageServer extends HttpServlet {
             iqInsert.setString(1, identifier);
             iqInsert.setString(2, filePath);
             iqInsert.executeUpdate();
+            iqInsert.close();
             
             // Try to start an import thread
             if( this.x_importImages() < 0 ) {

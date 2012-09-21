@@ -48,8 +48,8 @@ public abstract class ImageServerThread extends Thread {
         m_thread_id = et_id_result.getInt(1);
 
         // Close database handlers
-        etInsert.close();
         et_id_result.close();
+        etInsert.close();
     }
 
     public int getThread_type() {

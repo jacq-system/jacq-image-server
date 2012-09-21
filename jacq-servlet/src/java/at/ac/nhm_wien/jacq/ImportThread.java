@@ -82,8 +82,8 @@ public class ImportThread extends ImageServerThread {
 
                 importQueue.put(statRs.getString("identifier"), queueObj);
             }
-            queueStat.close();
             statRs.close();
+            queueStat.close();
 
             // Iterate over entries list and process them
             Iterator<Map.Entry<String,HashMap<String, Object>>> iqIt = importQueue.entrySet().iterator();
@@ -222,11 +222,12 @@ public class ImportThread extends ImageServerThread {
                     }
                 }
                 catch( Exception e ) {
-                    // Something went wrong, rollback
-                    m_conn.rollback();
+                    e.printStackTrace();
+
+                    // Something went wrong, rollback (this might fail, if no transaction started yet, so be tolerant)
+                    try { m_conn.rollback(); } catch( Exception ex ) { System.err.println("Rollback failed: " + ex.getMessage() ); }
 
                     // Write import errors to application server log (for tracing errors)
-                    e.printStackTrace();
                     this.logMessage(identifier, e.getMessage());
 
                     // Commit the log message
