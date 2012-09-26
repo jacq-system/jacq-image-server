@@ -268,6 +268,9 @@ public class ImageServer extends HttpServlet {
             }
             // Something went wrong during thread startup
             catch( Exception e ) {
+                System.err.println(e.getMessage());
+                e.printStackTrace();
+                
                 m_response.element( "result", "" );
                 m_response.element( "error", "Error while trying to start thread: " + e.getMessage() );
                 
@@ -624,15 +627,17 @@ public class ImageServer extends HttpServlet {
             iqInsert.close();
             
             // Try to start an import thread
-            if( this.x_importImages() < 0 ) {
+            /*if( this.x_importImages() < 0 ) {
                 throw new Exception( "Image added to queue, but unable to start import thread. Maybe it's already running?" );
-            }
-            
+            }*/
             
             // Everything went fine
             m_response.put("result", "'" + identifier + "' added for import.");
         }
         catch( Exception e ) {
+            System.err.println(e.getMessage());
+            e.printStackTrace();
+            
             m_response.put("error", e.getMessage());
             m_response.put("result", "");
         }
