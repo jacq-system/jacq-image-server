@@ -497,51 +497,82 @@ public class ImageServer extends HttpServlet {
     }
     
     /**
-     * Gets passed a list of resource-identifiers which are then searched for
-     * @param identifiers List of identifiers to search for
+     * Return all found resources for a given list of identifiers
+     * @param params 
      */
-    private void listResources( JSONArray identifiers ) {
+    public void x_listResources( JSONArray params ) {
         try {
+            // fetch list of resources
+            JSONArray identifiers = params.getJSONArray(0);
+            
+            // in order to prevent SQLLite from going mad we make the calls in 100 unit steps
+            int fromIndex = 0;
             JSONArray resources = new JSONArray();
-            
-            // Check if we have at least one identifier
-            if( identifiers.size() < 1 ) {
-                throw new Exception( "No identifiers passed" );
+            while( fromIndex < identifiers.size() ) {
+                int toIndex = fromIndex + 100;
+                
+                // check for out of bound
+                if( toIndex > identifiers.size() ) {
+                    toIndex = identifiers.size();
+                }
+                
+                // fetch next list and add it to resources
+                resources.addAll(this.listResources(JSONArray.fromObject(identifiers.subList(fromIndex, toIndex))));
+                fromIndex = toIndex;
             }
             
-            // Convert conditions to ArrayList
-            ArrayList<String> conditions = new ArrayList<String>();
-            for( int i = 0; i < identifiers.size(); i++ ) {
-                conditions.add("`identifier` LIKE ? ESCAPE '\\'");
-            }
-            // Create plain string where condition
-            String whereConditions = StringUtils.join(conditions, " OR ");
-            
-            // Prepare the actual statement
-            PreparedStatement stat = m_conn.prepareStatement("SELECT `identifier` FROM `resources` WHERE " + whereConditions + " ORDER BY `identifier` ASC");
-            for( int i = 0; i < identifiers.size(); i++ ) {
-                // Add string (but make sure the underscore is masked)
-                stat.setString(i + 1, identifiers.getString(i).replaceAll("_", "\\_"));
-            }
-
-            // Execute the query & fetch all found files
-            ResultSet rs = stat.executeQuery();
-            while(rs.next()) {
-                resources.add( rs.getString("identifier") );
-            }
-            rs.close();
-            stat.close();
-            
+            // prepare response
             m_response.put("result", resources);
+            m_response.put("error", null);
         }
         catch( Exception e ) {
+            // in case of an error, return it
+            m_response.put("result", null);
             m_response.put("error", e.getMessage());
-            m_response.put("result", "");
         }
     }
     
     /**
+     * Gets passed a list of resource-identifiers which are then searched for
+     * @param identifiers List of identifiers to search for
+     */
+    private JSONArray listResources( JSONArray identifiers ) throws Exception {
+        JSONArray resources = new JSONArray();
+
+        // Check if we have at least one identifier
+        if( identifiers.size() < 1 ) {
+            throw new Exception( "No identifiers passed" );
+        }
+        
+        // Convert conditions to ArrayList
+        ArrayList<String> conditions = new ArrayList<String>();
+        for( int i = 0; i < identifiers.size(); i++ ) {
+            conditions.add("`identifier` LIKE ? ESCAPE '\\'");
+        }
+        // Create plain string where condition
+        String whereConditions = StringUtils.join(conditions, " OR ");
+
+        // Prepare the actual statement
+        PreparedStatement stat = m_conn.prepareStatement("SELECT `identifier` FROM `resources` WHERE " + whereConditions + " ORDER BY `identifier` ASC");
+        for( int i = 0; i < identifiers.size(); i++ ) {
+            // Add string (but make sure the underscore is masked)
+            stat.setString(i + 1, identifiers.getString(i).replaceAll("_", "\\_"));
+        }
+
+        // Execute the query & fetch all found files
+        ResultSet rs = stat.executeQuery();
+        while(rs.next()) {
+            resources.add( rs.getString("identifier") );
+        }
+        rs.close();
+        stat.close();
+
+        return resources;
+    }
+    
+    /**
      * Returns a list of file identifiers for a given specimen
+     * @deprecated use listResources instead
      */
     public void x_listSpecimenImages( JSONArray params ) {
         if( params.size() >= 3 && params.getBoolean(2) ) {
@@ -554,6 +585,7 @@ public class ImageServer extends HttpServlet {
     
     /**
      * Returns a list of file identifiers for a given specimen
+     * @deprecated use listResources instead
      * @param specimen_id Specimen ID
      * @param herbar_number Herbarnumber of specimen
      * @param excludeTabObs Exclude tab and obs entries
@@ -577,7 +609,7 @@ public class ImageServer extends HttpServlet {
             identifiers.add(herbar_number + "B");
             
             // Finally list all resources using the identifier
-            this.listResources(identifiers);
+            m_response.put("result", this.listResources(identifiers));
         }
         catch( Exception e ) {
             m_response.put("error", e.getMessage());
