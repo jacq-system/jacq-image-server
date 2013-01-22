@@ -19,6 +19,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 import java.io.*;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -47,9 +48,9 @@ public class ImageServer extends HttpServlet {
      */
     public static Properties m_properties = new Properties();
 
-    private String m_requestId = "";
-    private JSONArray m_requestParams = null;
-    private JSONObject m_response = null;
+    //private String m_requestId = "";
+    //private JSONArray m_requestParams = null;
+    //private JSONObject m_response = null;
     private Connection m_conn = null;
     
     private ImportThread m_importThread = null;
@@ -183,64 +184,71 @@ public class ImageServer extends HttpServlet {
      * @return The output which should be sent to the client
      */
     protected String handleRequest(JSONObject reqObject) {
-        m_response = new JSONObject();
+        // prepare default response object
+        JSONObject response = new JSONObject();
+        response.put("error", null);
+        response.put("result", null);
         String methodName = "";
         if( !reqObject.isNullObject() ) {
             try {
-                // Fetch passed parameters
-                m_requestId = reqObject.getString("id");
-                m_response.put("id", m_requestId);
-                m_requestParams = reqObject.getJSONArray("params");
-                methodName = reqObject.getString("method");  // Prefix method with 'x_' to preven arbitrary executions
+                try {
+                    // Fetch passed parameters
+                    response.put("id", reqObject.getString("id"));
+                    JSONArray requestParams = reqObject.getJSONArray("params");
+                    methodName = reqObject.getString("method");
 
-                // Check if we have at least one key
-                if( m_requestParams.isEmpty() ) {
-                    throw new Exception( "No key passed" );
-                }
-                
-                // First parameter always MUST be the authentication key
-                String requestKey = m_requestParams.getString(0);
-                m_requestParams.remove(0);
-                
-                // Check if requestKey is valid
-                if( !requestKey.equals(m_properties.getProperty("ImageServer.key")) ) {
-                    throw new Exception( "Invalid key passed" );
-                }
+                    // Check if we have at least one key
+                    if( requestParams.isEmpty() ) {
+                        throw new Exception( "No key passed" );
+                    }
 
-                // Find correct method to call
-                Method callMethod = null;
-                Method[] methods = this.getClass().getMethods();
-                for( Method method : methods ) {
-                    if( method.getName().equals("x_" + methodName) ) {
-                        // Check if the parameters do fit
-                        Class[] parameterTypes = method.getParameterTypes();
-                        
-                        // Check if we have parameters
-                        if( m_requestParams.isEmpty() && parameterTypes.length == 0 ) {
-                            callMethod = method;
-                            callMethod.invoke(this);
-                            break;
-                        }
-                        else if( m_requestParams.size() > 0 && parameterTypes.length > 0 && parameterTypes[0] == JSONArray.class ) {
-                            callMethod = method;
-                            callMethod.invoke(this, m_requestParams);
-                            break;
+                    // First parameter always MUST be the authentication key
+                    String requestKey = requestParams.getString(0);
+                    requestParams.remove(0);
+
+                    // Check if requestKey is valid
+                    if( !requestKey.equals(m_properties.getProperty("ImageServer.key")) ) {
+                        throw new Exception( "Invalid key passed" );
+                    }
+
+                    // Find correct method to call
+                    Method callMethod = null;
+                    Method[] methods = this.getClass().getMethods();
+                    for( Method method : methods ) {
+                        // Prefix method with 'x_' to preven arbitrary executions
+                        if( method.getName().equals("x_" + methodName) ) {
+                            // Check if the parameters do fit
+                            Class[] parameterTypes = method.getParameterTypes();
+
+                            // Check if we have parameters
+                            if( requestParams.isEmpty() && parameterTypes.length == 0 ) {
+                                callMethod = method;
+                                response.put("result", callMethod.invoke(this) );
+                                break;
+                            }
+                            else if( requestParams.size() > 0 && parameterTypes.length > 0 && parameterTypes[0] == JSONArray.class ) {
+                                callMethod = method;
+                                response.put("result", callMethod.invoke(this, requestParams) );
+                                break;
+                            }
                         }
                     }
+
+                    // Check if we found a method at all
+                    if( callMethod == null ) {
+                        throw new Exception( "Method not found" );
+                    }
                 }
-                
-                // Check if we found a method at all
-                if( callMethod == null ) {
-                    throw new Exception( "Method not found" );
+                catch(InvocationTargetException ite) {
+                    throw ite.getCause();
                 }
             }
-            catch(Exception e ) {
-                m_response.element("result", "");
-                m_response.element("error", "Unable to call requested method ('" + methodName + "'): " + e.getMessage() + " / " + e.toString() );
+            catch(Throwable e ) {
+                response.put("error", "Unable to call requested method ('" + methodName + "'): " + e.getMessage() + " / " + e.toString() );
             }
         }
 
-        return m_response.toString();
+        return response.toString();
     }
     
     /**
@@ -249,7 +257,7 @@ public class ImageServer extends HttpServlet {
     /**
      * Starts a thread for importing new images
      */
-    public int x_importImages() {
+    public int x_importImages() throws Exception {
         // Check if importthread is still active
         if( m_importThread != null && !m_importThread.isAlive() ) {
             m_importThread = null;
@@ -263,7 +271,6 @@ public class ImageServer extends HttpServlet {
                 m_importThread.start();
 
                 // Return thread id
-                m_response.element( "result", m_importThread.getThread_id() );
                 return m_importThread.getThread_id();
             }
             // Something went wrong during thread startup
@@ -271,17 +278,11 @@ public class ImageServer extends HttpServlet {
                 System.err.println(e.getMessage());
                 e.printStackTrace();
                 
-                m_response.element( "result", "" );
-                m_response.element( "error", "Error while trying to start thread: " + e.getMessage() );
-                
-                return -1;
+                throw new Exception("Error while trying to start thread: " + e.getMessage());
             }
         }
         else {
-            m_response.element( "result", "" );
-            m_response.element( "error", "Thread already running!" );
-            
-            return -2;
+            throw new Exception("Thread already running!");
         }
     }
     
@@ -289,22 +290,22 @@ public class ImageServer extends HttpServlet {
      * Wheter if we want the obsoletes can be passed as first parameter
      * @param params 
      */
-    public void x_listArchiveImages(JSONArray params) {
-        this.listArchiveImages( (params.getBoolean(0)) ? 1 : 0 );
+    public JSONArray x_listArchiveImages(JSONArray params) throws Exception {
+        return this.listArchiveImages( (params.getBoolean(0)) ? 1 : 0 );
     }
     
     /**
      * Calling listArchiveImages without parameters is allowed as well
      */
-    public void x_listArchiveImages() {
-        this.listArchiveImages(0);
+    public JSONArray x_listArchiveImages() throws Exception {
+        return this.listArchiveImages(0);
     }
     
     /**
      * List all images currently stored in the archive
      * @param p_obsolete return obsolete entries
      */
-    private void listArchiveImages( int p_obsolete ) {
+    private JSONArray listArchiveImages( int p_obsolete ) throws Exception {
         try {
             JSONArray resources = new JSONArray();
 
@@ -318,19 +319,17 @@ public class ImageServer extends HttpServlet {
             rs.close();
             prepStat.close();
             
-            m_response.put("result", resources);
+            return resources;
         }
         catch( Exception e ) {
-            m_response.put("error", e.getMessage());
-            m_response.put("result", "");
+            throw new Exception(e.getMessage());
         }
     }
     
     /**
      * List all images currently stored in the archive
      */
-    public void x_listDjatokaImages() {
-        
+    public JSONArray x_listDjatokaImages() throws Exception {
         try {
             JSONArray resources = new JSONArray();
             
@@ -342,24 +341,23 @@ public class ImageServer extends HttpServlet {
             rs.close();
             stat.close();
             
-            m_response.put("result", resources);
+            return resources;
         }
         catch( Exception e ) {
-            m_response.put("error", e.getMessage());
-            m_response.put("result", "");
+            throw new Exception( e.getMessage() );
         }
     }
     
     /**
      * Get a list of threads (after a certain date, optionally filtered by type)
      */
-    public void x_listThreads( JSONArray params ) {
+    public JSONObject x_listThreads( JSONArray params ) throws Exception {
         if( params.size() > 1 ) {
-            listThreads(params.getInt(0), params.getInt(1));
+            return listThreads(params.getInt(0), params.getInt(1));
         }
         // By default do not filter by thread type
         else {
-            listThreads(params.getInt(0), 0);
+            return listThreads(params.getInt(0), 0);
         }
     }
     
@@ -368,7 +366,7 @@ public class ImageServer extends HttpServlet {
      * @param cutoff_date threads older than cutoff_date wont be returned
      * @param type limit returned threads to a certain type
      */
-    private void listThreads( int cutoff_date, int type ) {
+    private JSONObject listThreads( int cutoff_date, int type ) throws Exception {
         try {
             JSONObject threads = new JSONObject();
 
@@ -399,26 +397,25 @@ public class ImageServer extends HttpServlet {
             rs.close();
             stat.close();
             
-            m_response.put("result", threads);
+            return threads;
         }
         catch( Exception e ) {
-            m_response.put("error", e.getMessage());
-            m_response.put("result", "");
+            throw new Exception( e.getMessage() );
         }
     }
     
     /**
      * Returns a list of log messages for a given thread-id
      */
-    public void x_listImportLogs( JSONArray params ) {
-        listImportLogs( params.getInt(0) );
+    public JSONArray x_listImportLogs( JSONArray params ) throws Exception {
+        return listImportLogs( params.getInt(0) );
     }
     
     /**
      * Returns a list of log messages for a given thread-id
      * @param it_id 
      */
-    private void listImportLogs( int it_id ) {
+    private JSONArray listImportLogs( int it_id ) throws Exception {
         try {
             JSONArray logs = new JSONArray();
             
@@ -435,19 +432,18 @@ public class ImageServer extends HttpServlet {
             rs.close();
             stat.close();
             
-            m_response.put("result", logs);
+            return logs;
         }
         catch( Exception e ) {
-            m_response.put("error", e.getMessage());
-            m_response.put("result", "");
+            throw new Exception( e.getMessage() );
         }
     }
     
     /**
      * Start exporting images (callable function)
      */
-    public void x_exportImages( JSONArray params ) {
-        exportImages("", params.getJSONArray(0));
+    public int x_exportImages( JSONArray params ) throws Exception {
+        return exportImages("", params.getJSONArray(0));
     }
     
     /**
@@ -455,7 +451,7 @@ public class ImageServer extends HttpServlet {
      * @param p_exportPath relative path inside the exportDirectory property
      * @param p_identifier list of identifiers to export
      */
-    private void exportImages( String p_exportPath, JSONArray p_identifiers ) {
+    private int exportImages( String p_exportPath, JSONArray p_identifiers ) throws Exception {
         // Check if thread is still alive
         if( m_exportThread != null && !m_exportThread.isAlive() ) {
             m_exportThread = null;
@@ -482,17 +478,15 @@ public class ImageServer extends HttpServlet {
                 m_exportThread.start();
 
                 // We finished successfully if we reach here
-                m_response.put("result", m_exportThread.getThread_id());
+                return m_exportThread.getThread_id();
             }
             catch( Exception e ) {
-                m_response.put("error", e.getMessage() );
-                m_response.put("result", "");
+                throw new Exception( e.getMessage() );
             }
         }
         // ... thread already running
         else {
-            m_response.put("error", "Export thread already running" );
-            m_response.put("result", "");
+            throw new Exception( "Export thread already running" );
         }
     }
     
@@ -500,7 +494,7 @@ public class ImageServer extends HttpServlet {
      * Return all found resources for a given list of identifiers
      * @param params 
      */
-    public void x_listResources( JSONArray params ) {
+    public JSONArray x_listResources( JSONArray params ) throws Exception {
         try {
             // fetch list of resources
             JSONArray identifiers = params.getJSONArray(0);
@@ -519,16 +513,16 @@ public class ImageServer extends HttpServlet {
                 // fetch next list and add it to resources
                 resources.addAll(this.listResources(JSONArray.fromObject(identifiers.subList(fromIndex, toIndex))));
                 fromIndex = toIndex;
+
+                System.err.println("processed: " + toIndex + " / " + identifiers.size());
             }
             
             // prepare response
-            m_response.put("result", resources);
-            m_response.put("error", null);
+            return resources;
         }
         catch( Exception e ) {
             // in case of an error, return it
-            m_response.put("result", null);
-            m_response.put("error", e.getMessage());
+            throw new Exception( e.getMessage() );
         }
     }
     
@@ -574,12 +568,12 @@ public class ImageServer extends HttpServlet {
      * Returns a list of file identifiers for a given specimen
      * @deprecated use listResources instead
      */
-    public void x_listSpecimenImages( JSONArray params ) {
+    public JSONArray x_listSpecimenImages( JSONArray params ) throws Exception {
         if( params.size() >= 3 && params.getBoolean(2) ) {
-            listSpecimenImages( params.getInt(0), params.getString(1), true );
+            return listSpecimenImages( params.getInt(0), params.getString(1), true );
         }
         else {
-            listSpecimenImages( params.getInt(0), params.getString(1), false );
+            return listSpecimenImages( params.getInt(0), params.getString(1), false );
         }
     }
     
@@ -590,7 +584,7 @@ public class ImageServer extends HttpServlet {
      * @param herbar_number Herbarnumber of specimen
      * @param excludeTabObs Exclude tab and obs entries
      */
-    private void listSpecimenImages( int specimen_id, String herbar_number, boolean excludeTabObs) {
+    private JSONArray listSpecimenImages( int specimen_id, String herbar_number, boolean excludeTabObs) throws Exception {
         try {
             // Cleanup passed herbar_number
             herbar_number = herbar_number.replaceAll("%", "\\%");
@@ -609,11 +603,10 @@ public class ImageServer extends HttpServlet {
             identifiers.add(herbar_number + "B");
             
             // Finally list all resources using the identifier
-            m_response.put("result", this.listResources(identifiers));
+            return this.listResources(identifiers);
         }
         catch( Exception e ) {
-            m_response.put("error", e.getMessage());
-            m_response.put("result", "");
+            throw new Exception( e.getMessage() );
         }
     }
     
@@ -621,15 +614,15 @@ public class ImageServer extends HttpServlet {
      * Force import of a single identifier
      * @param params 
      */
-    public void x_forceImport(JSONArray params) {
-        this.forceImport(params.getString(0));
+    public String x_forceImport(JSONArray params) throws Exception {
+        return this.forceImport(params.getString(0));
     }
     
     /**
      * Force import of a passed identifier
      * @param identifier Identifier to force the import for
      */
-    private void forceImport(String identifier) {
+    private String forceImport(String identifier) throws Exception {
         try {
             // Check import directory for identifier
             HashMap<String,String> importContent = Utilities.listDirectory(m_properties.getProperty("ImageServer.importDirectory"));
@@ -664,14 +657,13 @@ public class ImageServer extends HttpServlet {
             }*/
             
             // Everything went fine
-            m_response.put("result", "'" + identifier + "' added for import.");
+            return "'" + identifier + "' added for import.";
         }
         catch( Exception e ) {
             System.err.println(e.getMessage());
             e.printStackTrace();
             
-            m_response.put("error", e.getMessage());
-            m_response.put("result", "");
+            throw new Exception(e.getMessage());
         }
     }
 
@@ -681,7 +673,7 @@ public class ImageServer extends HttpServlet {
     /**
      * Rescan the djatoka images directory and update the database (warning: may take long)
      */
-    private void rescanDjatokaImagesDirectory() {
+    private int rescanDjatokaImagesDirectory() throws Exception {
         try {
             HashMap<String,String> dirContent = Utilities.listDirectory(m_properties.getProperty("ImageServer.resourcesDirectory"));
 
@@ -706,11 +698,10 @@ public class ImageServer extends HttpServlet {
             prepStat.close();
 
             // Everything went fine, report back
-            m_response.element("result", "1");
+            return 1;
         }
         catch( Exception e ) {
-            m_response.element("result", "");
-            m_response.element("error", e.getMessage());
+            throw new Exception(e.getMessage());
         }
     }
     
