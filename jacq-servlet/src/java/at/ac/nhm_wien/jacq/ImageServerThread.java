@@ -23,10 +23,8 @@ package at.ac.nhm_wien.jacq;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
-import java.util.ArrayList;
 
 /**
- *
  * @author wkoller
  */
 public abstract class ImageServerThread extends Thread {
@@ -128,13 +126,6 @@ public abstract class ImageServerThread extends Thread {
         }
         catch( Exception e ) {
             System.err.println( "Unable to update thread table [" + m_thread_id + "]" );
-            e.printStackTrace();
-        }
-        
-        try {
-            m_conn.close();
-        }
-        catch( Exception e ) {
             e.printStackTrace();
         }
     }

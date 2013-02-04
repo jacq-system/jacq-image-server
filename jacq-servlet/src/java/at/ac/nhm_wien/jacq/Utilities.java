@@ -25,20 +25,24 @@ import java.util.Date;
 import java.util.HashMap;
 
 /**
- *
  * @author wkoller
  */
 public class Utilities {
+    private static Connection m_connection = null;
+    
     /**
      * Creates a new connection to the sqlite database
      * @return connection handler to sqlite database
      */
     public static Connection getConnection() {
         try {
-            Class.forName("org.sqlite.JDBC");
-            Connection conn = DriverManager.getConnection("jdbc:sqlite:" + ImageServer.m_properties.getProperty("ImageServer.database") );
-            conn.setAutoCommit(true);
-            return conn;
+            if( Utilities.m_connection == null ) {
+                Class.forName("org.sqlite.JDBC");
+                Utilities.m_connection = DriverManager.getConnection("jdbc:sqlite:" + ImageServer.m_properties.getProperty("ImageServer.database") );
+                Utilities.m_connection.setAutoCommit(true);
+            }
+            
+            return Utilities.m_connection;
         }
         catch( Exception e ) {
             System.err.println("Unable to open connection");
