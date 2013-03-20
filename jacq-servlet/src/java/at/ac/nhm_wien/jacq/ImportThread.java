@@ -177,8 +177,8 @@ public class ImportThread extends ImageServerThread {
                                 String archiveDirectory = Utilities.getDirectoryName(inputFile.lastModified());
                                 File archiveFile = new File( Utilities.createDirectory(ImageServer.m_properties.getProperty("ImageServer.archiveDirectory"), archiveDirectory ) + inputFile.getName() );
 
-                                // Check if destination does not exist
-                                if( !archiveFile.exists() ) {
+                                // Check if destination does not exist (or we are forcing the import)
+                                if( !archiveFile.exists() || force == 1 ) {
                                     // Check if the archive path can be written
                                     if( archiveFile.getParentFile().canWrite() ) {
                                         // Copy the file into the archive
@@ -219,7 +219,7 @@ public class ImportThread extends ImageServerThread {
                                     }
                                 }
                                 else {
-                                    throw new Exception( "File exists already in archive [" + archiveFile.getPath() + "]" );
+                                    throw new Exception( "File already exists in archive [" + archiveFile.getPath() + "]" );
                                 }
                             }
                             else {
