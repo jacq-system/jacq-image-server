@@ -181,12 +181,12 @@ public class ImportThread extends ImageServerThread {
                     resourcesStat.executeUpdate();
                     resourcesStat.close();
 
-                    // Create archive directory
-                    String archiveDirectory = Utilities.getDirectoryName(inputFile.lastModified());
-                    File archiveFile = new File( Utilities.createDirectory(ImageServer.m_properties.getProperty("ImageServer.archiveDirectory"), archiveDirectory ) + inputFile.getName() );
-
                     // check if archiving is desired
                     if( !Boolean.parseBoolean(ImageServer.m_properties.getProperty("ImageServer.noArchive")) ) {
+                        // Create archive directory
+                        String archiveDirectory = Utilities.getDirectoryName(inputFile.lastModified());
+                        File archiveFile = new File( Utilities.createDirectory(ImageServer.m_properties.getProperty("ImageServer.archiveDirectory"), archiveDirectory ) + inputFile.getName() );
+
                         // Check if destination does not exist (or we are forcing the import)
                         if( archiveFile.exists() && force != 1 ) {
                             throw new Exception( "File already exists in archive [" + archiveFile.getPath() + "]" );
