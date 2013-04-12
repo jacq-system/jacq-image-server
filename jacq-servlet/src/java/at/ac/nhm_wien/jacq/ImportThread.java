@@ -115,129 +115,124 @@ public class ImportThread extends ImageServerThread {
                     rs = existsStat.executeQuery();
                     boolean status = rs.next();
                     rs.close();
-                    // Allow forced adds anyway
-                    if( !status || force == 1 ) {
-                        // Create output file-name & path
-                        String temporaryName = ImageServer.m_properties.getProperty("ImageServer.tempDirectory") + identifier + ".tif";
-
-                        // Check if we want to watermark the image
-                        if( !ImageServer.m_properties.getProperty("ImageServer.watermark").isEmpty() ) {
-                            // Watermark the image
-                            // Note: [0] for the input-file in order to avoid conflicts with multi-page tiffs
-                            Process watermarkProc = new ProcessBuilder( ImageServer.m_properties.getProperty("ImageServer.imComposite"), "-quiet", "-gravity", "SouthEast", ImageServer.m_properties.getProperty("ImageServer.watermark"), inputName + "[0]", temporaryName ).start();
-                            watermarkProc.waitFor();
-                            watermarkProc.getErrorStream().close();
-                            watermarkProc.getInputStream().close();
-                            watermarkProc.getOutputStream().close();
-                            watermarkProc.destroy();
-                        }
-                        else {
-                            // No temporary file, so use input directly
-                            temporaryName = inputName;
-                        }
-
-                        // Check if the watermarking was successfull
-                        File temporaryFile = new File(temporaryName);
-                        if( temporaryFile.exists() ) {
-                            // Create output directory for djatoka
-                            File inputFile = new File(inputName);
-                            String outputName = Utilities.createDirectory(ImageServer.m_properties.getProperty("ImageServer.resourcesDirectory"), Utilities.getDirectoryName(inputFile.lastModified())) + identifier + ".jp2";
-
-                            // Convert new image
-                            Process compressProc = new ProcessBuilder( ImageServer.m_properties.getProperty("ImageServer.dCompress"), "-i", temporaryName, "-o", outputName ).start();
-                            compressProc.waitFor();
-                            compressProc.getErrorStream().close();
-                            compressProc.getInputStream().close();
-                            compressProc.getOutputStream().close();
-                            compressProc.destroy();
-
-                            // Remove temporary file
-                            temporaryFile.delete();
-
-                            // Check if image conversion was successfull
-                            File outputFile = new File(outputName);
-                            if( outputFile.exists() ) {
-                                // Check if an old entry already existed
-                                if( status ) {
-                                    // Remove old resources entry
-                                    PreparedStatement resDelStat = m_conn.prepareStatement("DELETE FROM `resources` WHERE `identifier` = ?");
-                                    resDelStat.setString(1, identifier);
-                                    resDelStat.executeUpdate();
-                                    resDelStat.close();
-                                }
-
-                                // Insert id into database
-                                PreparedStatement resourcesStat = m_conn.prepareStatement( "INSERT INTO `resources` ( `identifier`, `imageFile` ) values (?, ?)" );
-                                resourcesStat.setString(1, identifier);
-                                resourcesStat.setString(2, outputName );
-                                resourcesStat.executeUpdate();
-                                resourcesStat.close();
-
-                                // Create archive directory
-                                String archiveDirectory = Utilities.getDirectoryName(inputFile.lastModified());
-                                File archiveFile = new File( Utilities.createDirectory(ImageServer.m_properties.getProperty("ImageServer.archiveDirectory"), archiveDirectory ) + inputFile.getName() );
-                                
-                                // check if archiving is desired
-                                if( Boolean.parseBoolean(ImageServer.m_properties.getProperty("ImageServer.noArchive")) ) {
-                                // Check if destination does not exist (or we are forcing the import)
-                                    if( !archiveFile.exists() || force == 1 ) {
-                                        // Check if the archive path can be written
-                                        if( archiveFile.getParentFile().canWrite() ) {
-                                            // Copy the file into the archive
-                                            try {
-                                                Utilities.copyFile(inputFile.getPath(), archiveFile.getPath());
-
-                                                // Check if an old entry already existed
-                                                if( status ) {
-                                                    // Mark old entry as obsolete
-                                                    PreparedStatement archiveUpdateStat = m_conn.prepareStatement("UPDATE `archive_resources` SET `obsolete` = 1 WHERE `identifier` = ?");
-                                                    archiveUpdateStat.setString(1, identifier);
-                                                    archiveUpdateStat.executeUpdate();
-                                                    archiveUpdateStat.close();
-                                                }
-
-                                                // Update archive resources list
-                                                PreparedStatement archiveStat = m_conn.prepareStatement( "INSERT INTO `archive_resources` ( `identifier`, `imageFile`, `lastModified`, `size`, `it_id` ) values (?, ?, ?, ?, ?)" );
-                                                archiveStat.setString(1, identifier);
-                                                archiveStat.setString(2, archiveDirectory + archiveFile.getName());
-                                                archiveStat.setLong(3, inputFile.lastModified() / 1000);    // NOTE: Using inputFile here to make sure we get the correct information
-                                                archiveStat.setLong(4, inputFile.length());
-                                                archiveStat.setInt(5, this.getThread_id());
-                                                archiveStat.executeUpdate();
-                                                archiveStat.close();
-
-                                                // Remove input file
-                                                inputFile.delete();
-                                            }
-                                            catch( Exception e ) {
-                                                throw new Exception( "Unable to move file into archive [" + inputFile.getPath() + " => " + archiveFile.getPath() + "] - Error: [" + e.getMessage() + "]" );
-                                            }
-                                        }
-                                        else {
-                                            throw new Exception( "Unable to write archive directory [" + archiveFile.getPath() + "]" );
-                                        }
-                                    }
-                                    else {
-                                        throw new Exception( "File already exists in archive [" + archiveFile.getPath() + "]" );
-                                    }
-                                }
-
-                                // Finally make sure our new data is written to disk
-                                m_conn.commit();
-                            }
-                            else {
-                                throw new Exception( "Writing file for Djatoka failed [" + outputFile.getPath() + "]" );
-                            }
-                        }
-                        else {
-                            throw new Exception( "Watermarking image failed [" + temporaryFile.getPath() + "]" );
-                        }
-                    }
-                    else {
+                    // check if file exists and we do not force
+                    if( status && force != 1 ) {
                         throw new Exception( "Import of [" + inputName + "] failed. Identifier already exists [" + identifier + "]" );
                     }
+
+                    // Create output file-name & path
+                    String temporaryName = ImageServer.m_properties.getProperty("ImageServer.tempDirectory") + identifier + ".tif";
+
+                    // Check if we want to watermark the image
+                    if( !ImageServer.m_properties.getProperty("ImageServer.watermark").isEmpty() ) {
+                        // Watermark the image
+                        // Note: [0] for the input-file in order to avoid conflicts with multi-page tiffs
+                        Process watermarkProc = new ProcessBuilder( ImageServer.m_properties.getProperty("ImageServer.imComposite"), "-quiet", "-gravity", "SouthEast", ImageServer.m_properties.getProperty("ImageServer.watermark"), inputName + "[0]", temporaryName ).start();
+                        watermarkProc.waitFor();
+                        watermarkProc.getErrorStream().close();
+                        watermarkProc.getInputStream().close();
+                        watermarkProc.getOutputStream().close();
+                        watermarkProc.destroy();
+                    }
+                    else {
+                        // No temporary file, so use input directly
+                        temporaryName = inputName;
+                    }
+
+                    // Check if the watermarking was successfull
+                    File temporaryFile = new File(temporaryName);
+                    if( !temporaryFile.exists() ) {
+                        throw new Exception( "Watermarking image failed [" + temporaryFile.getPath() + "]" );
+                    }
+                        
+                    // Create output directory for djatoka
+                    File inputFile = new File(inputName);
+                    String outputName = Utilities.createDirectory(ImageServer.m_properties.getProperty("ImageServer.resourcesDirectory"), Utilities.getDirectoryName(inputFile.lastModified())) + identifier + ".jp2";
+
+                    // Convert new image
+                    Process compressProc = new ProcessBuilder( ImageServer.m_properties.getProperty("ImageServer.dCompress"), "-i", temporaryName, "-o", outputName ).start();
+                    compressProc.waitFor();
+                    compressProc.getErrorStream().close();
+                    compressProc.getInputStream().close();
+                    compressProc.getOutputStream().close();
+                    compressProc.destroy();
+
+                    // Remove temporary file
+                    temporaryFile.delete();
+
+                    // Check if image conversion was successfull
+                    File outputFile = new File(outputName);
+                    if( !outputFile.exists() ) {
+                        throw new Exception( "Writing file for Djatoka failed [" + outputFile.getPath() + "]" );
+                    }
+                    // Check if an old entry already existed
+                    if( status ) {
+                        // Remove old resources entry
+                        PreparedStatement resDelStat = m_conn.prepareStatement("DELETE FROM `resources` WHERE `identifier` = ?");
+                        resDelStat.setString(1, identifier);
+                        resDelStat.executeUpdate();
+                        resDelStat.close();
+                    }
+
+                    // Insert id into database
+                    PreparedStatement resourcesStat = m_conn.prepareStatement( "INSERT INTO `resources` ( `identifier`, `imageFile` ) values (?, ?)" );
+                    resourcesStat.setString(1, identifier);
+                    resourcesStat.setString(2, outputName );
+                    resourcesStat.executeUpdate();
+                    resourcesStat.close();
+
+                    // Create archive directory
+                    String archiveDirectory = Utilities.getDirectoryName(inputFile.lastModified());
+                    File archiveFile = new File( Utilities.createDirectory(ImageServer.m_properties.getProperty("ImageServer.archiveDirectory"), archiveDirectory ) + inputFile.getName() );
+
+                    // check if archiving is desired
+                    if( Boolean.parseBoolean(ImageServer.m_properties.getProperty("ImageServer.noArchive")) ) {
+                        // Check if destination does not exist (or we are forcing the import)
+                        if( archiveFile.exists() && force != 1 ) {
+                            throw new Exception( "File already exists in archive [" + archiveFile.getPath() + "]" );
+                        }
+                            
+                        // Check if the archive path can be written
+                        if( !archiveFile.getParentFile().canWrite() ) {
+                            throw new Exception( "Unable to write archive directory [" + archiveFile.getPath() + "]" );
+                        }
+
+                        // Copy the file into the archive
+                        try {
+                            Utilities.copyFile(inputFile.getPath(), archiveFile.getPath());
+
+                            // Check if an old entry already existed
+                            if( status ) {
+                                // Mark old entry as obsolete
+                                PreparedStatement archiveUpdateStat = m_conn.prepareStatement("UPDATE `archive_resources` SET `obsolete` = 1 WHERE `identifier` = ?");
+                                archiveUpdateStat.setString(1, identifier);
+                                archiveUpdateStat.executeUpdate();
+                                archiveUpdateStat.close();
+                            }
+
+                            // Update archive resources list
+                            PreparedStatement archiveStat = m_conn.prepareStatement( "INSERT INTO `archive_resources` ( `identifier`, `imageFile`, `lastModified`, `size`, `it_id` ) values (?, ?, ?, ?, ?)" );
+                            archiveStat.setString(1, identifier);
+                            archiveStat.setString(2, archiveDirectory + archiveFile.getName());
+                            archiveStat.setLong(3, inputFile.lastModified() / 1000);    // NOTE: Using inputFile here to make sure we get the correct information
+                            archiveStat.setLong(4, inputFile.length());
+                            archiveStat.setInt(5, this.getThread_id());
+                            archiveStat.executeUpdate();
+                            archiveStat.close();
+
+                            // Remove input file
+                            inputFile.delete();
+                        }
+                        catch( Exception e ) {
+                            throw new Exception( "Unable to move file into archive [" + inputFile.getPath() + " => " + archiveFile.getPath() + "] - Error: [" + e.getMessage() + "]" );
+                        }
+                    }
+
+                    // Finally make sure our new data is written to disk
+                    m_conn.commit();
                 }
                 catch( Exception e ) {
+                    // print stack trace
                     e.printStackTrace();
 
                     // Something went wrong, rollback (this might fail, if no transaction started yet, so be tolerant)
