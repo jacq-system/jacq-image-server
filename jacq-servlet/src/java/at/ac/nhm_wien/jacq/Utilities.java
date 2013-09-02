@@ -135,8 +135,14 @@ public class Utilities {
             if( dirEntry.isDirectory() ) {
                 dirContent.putAll( listDirectory(dirEntry.getAbsolutePath()) );
             }
-            else {
-                dirContent.put(dirEntry.getName().substring(0, dirEntry.getName().lastIndexOf(".")), dirEntry.getAbsolutePath());
+            else if( dirEntry.isFile() ) {
+                int extSepPosition = dirEntry.getName().lastIndexOf(".");
+                if( extSepPosition < 0 ) {
+                    System.err.println("Invalid file entry: " + dirEntry.getName());
+                    continue;
+                }
+                
+                dirContent.put(dirEntry.getName().substring(0, extSepPosition), dirEntry.getAbsolutePath());
             }
         }
         
