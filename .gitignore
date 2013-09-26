@@ -1,4 +1,4 @@
-/jacq-viewer/nbproject/
-/jacq-servlet/nbproject/
+nbproject/
 /jacq-servlet/build/
 /jacq-servlet/dist/
+nbbuild.xml
