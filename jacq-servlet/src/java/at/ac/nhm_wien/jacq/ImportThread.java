@@ -80,9 +80,15 @@ public class ImportThread extends ImageServerThread {
                     this.logMessage("Unable to fill import-queue: " + e.getMessage());
                 }
             }
+            
+            // image server without archive has to use the resources table
+            String existsStatSQL = "SELECT `identifier` FROM `archive_resources` WHERE `identifier` = ? AND `obsolete` = 0";
+            if( Boolean.parseBoolean(ImageServer.m_properties.getProperty("ImageServer.noArchive")) ) {
+                existsStatSQL = "SELECT `identifier` FROM `resources` WHERE `identifier` = ?";
+            }
 
             // Prepare statement for identifier check
-            PreparedStatement existsStat = m_conn.prepareStatement( "SELECT `identifier` FROM `archive_resources` WHERE `identifier` = ? AND `obsolete` = 0" );
+            PreparedStatement existsStat = m_conn.prepareStatement( existsStatSQL );
             // Find all entries in queue
             queueStat = m_conn.prepareStatement("SELECT * FROM `import_queue`");
             ResultSet statRs = queueStat.executeQuery();
