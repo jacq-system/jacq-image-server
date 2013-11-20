@@ -49,6 +49,12 @@ public class ExportThread extends ImageServerThread {
      */
     @Override
     public void run() {
+        // exporting is not supported for nonArchive image servers
+        if( Boolean.parseBoolean(ImageServer.m_properties.getProperty("ImageServer.noArchive")) ) {
+            this.logMessage("Exporting not supported if noArchive is true");
+            return;
+        }
+        
         try {
             // Prepare statement for fetching archive path
             PreparedStatement archiveSelect = m_conn.prepareStatement("SELECT `imageFile` FROM `archive_resources` WHERE `identifier` = ?");
