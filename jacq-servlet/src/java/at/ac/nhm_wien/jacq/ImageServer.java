@@ -29,6 +29,7 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Properties;
+import java.util.regex.Matcher;
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
@@ -549,7 +550,7 @@ public class ImageServer extends HttpServlet {
         PreparedStatement stat = m_conn.prepareStatement("SELECT `identifier` FROM `resources` WHERE " + whereConditions + " ORDER BY `identifier` ASC");
         for( int i = 0; i < identifiers.size(); i++ ) {
             // Add string (but make sure the underscore is masked)
-            stat.setString(i + 1, identifiers.getString(i).replaceAll("_", "\\_"));
+            stat.setString(i + 1, identifiers.getString(i).replaceAll("_", Matcher.quoteReplacement("\\_")));
         }
 
         // Execute the query & fetch all found files
