@@ -30,12 +30,15 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.Properties;
 import java.util.regex.Matcher;
+
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
+
 import net.sf.json.JSONArray;
 import net.sf.json.JSONObject;
+
 import org.apache.commons.lang.StringUtils;
 
 /**
@@ -43,7 +46,9 @@ import org.apache.commons.lang.StringUtils;
  * @author wkoller
  */
 public class ImageServer extends HttpServlet {
-    /**
+	private static final long serialVersionUID = 1L;
+
+	/**
      * Used by all classes to access the configuration settings
      */
     public static Properties m_properties = new Properties();
@@ -218,7 +223,8 @@ public class ImageServer extends HttpServlet {
                         // Prefix method with 'x_' to preven arbitrary executions
                         if( method.getName().equals("x_" + methodName) ) {
                             // Check if the parameters do fit
-                            Class[] parameterTypes = method.getParameterTypes();
+                            @SuppressWarnings("rawtypes")
+							Class[] parameterTypes = method.getParameterTypes();
 
                             // Check if we have parameters
                             if( requestParams.isEmpty() && parameterTypes.length == 0 ) {
