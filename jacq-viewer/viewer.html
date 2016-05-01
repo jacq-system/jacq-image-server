@@ -3,144 +3,144 @@
     "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" >
 
- <head>
-  <meta name="author" content="Ruven Pillay &lt;ruven@users.sourceforge.netm&gt;"/>
-  <meta name="author" content="Ryan Chute &lt;rchute@users.sourceforge.netm&gt;"/>
-  <meta name="author" content="Wolfgang Koller &lt;viras@users.sourceforge.netm&gt;"/>
-  <meta name="keywords" content="djatoka IIPImage Ajax IIP Zooming Streaming High Resolution Mootools Jacq"/>
-  <meta name="description" content="djatoka IIPImage Viewer: High Resolution Remote Image Streaming Viewing modified for Jacq"/>
-  <meta name="copyright" content="&copy; 2003-2008 Ruven Pillay, &copy; 2012 museum of natural history Vienna"/>
+    <head>
+        <meta name="author" content="Ruven Pillay &lt;ruven@users.sourceforge.netm&gt;"/>
+        <meta name="author" content="Ryan Chute &lt;rchute@users.sourceforge.netm&gt;"/>
+        <meta name="author" content="Wolfgang Koller &lt;viras@users.sourceforge.netm&gt;"/>
+        <meta name="keywords" content="djatoka IIPImage Ajax IIP Zooming Streaming High Resolution Mootools Jacq"/>
+        <meta name="description" content="djatoka IIPImage Viewer: High Resolution Remote Image Streaming Viewing modified for Jacq"/>
+        <meta name="copyright" content="&copy; 2003-2008 Ruven Pillay, &copy; 2012 museum of natural history Vienna"/>
 
-  <link rel="stylesheet" type="text/css" media="all" href="css/iip.compressed.css" />
-  <link rel="shortcut icon" href="images/djatoka.16x16.png" />
-  <title>jacq Viewer, based on djatoka viewer</title>
+        <link rel="stylesheet" type="text/css" media="all" href="css/iip.compressed.css" />
+        <link rel="shortcut icon" href="images/djatoka.16x16.png" />
+        <title>jacq Viewer, based on djatoka viewer</title>
 
-  <script type="text/javascript" src="javascript/mootools-1.2.5-core-compressed.js"></script>
-  <script type="text/javascript" src="javascript/mootools-1.2.5.1-more-compressed.js"></script>
-  <script type="text/javascript" src="javascript/iipmooviewer-1.1.js"></script>
-  
-  <script type="text/javascript">
-      // Simple function for changing the location once a new item was selected
-      function identifier_select_onchange() {
-          identifier_switch( $( 'identifier_select' ).get( 'value' ) );
-      }
-      
-      function identifier_switch( p_identifier ) {
-          window.location = 'viewer.html?rft_id=' + p_identifier + '&identifiers=' + identifiers.join(',');
-      }
-      
-      // Clean up a passed identifier
-      function identifier_clean( p_identifier ) {
-          // Make sure only alphanumeric, hyphens and underscores are returned
-          return p_identifier.replace( /[^a-zA-Z0-9_-]/g, '' );
-      }
-  </script>
- </head>
+        <script type="text/javascript" src="javascript/mootools-1.2.5-core-compressed.js"></script>
+        <script type="text/javascript" src="javascript/mootools-1.2.5.1-more-compressed.js"></script>
+        <script type="text/javascript" src="javascript/iipmooviewer-1.1.js"></script>
 
- <body>
-     <div id="identifier_select_div" style="position: absolute; top: 50px; left: 10px; background-color: #222222; z-index: 1; text-align: center;">
-         <select id="identifier_select" onchange="identifier_select_onchange();" style="margin-bottom: 2px;"></select>
-         <br />
-     </div>
-   <div style="width:99%;height:99%;margin-left:auto;margin-right:auto" id="targetframe"></div>
+        <script type="text/javascript">
+            // Simple function for changing the location once a new item was selected
+            function identifier_select_onchange() {
+                identifier_switch($('identifier_select').get('value'));
+            }
 
-  <script type="text/javascript">
-    // The iipsrv server path (/fcgi-bin/iipsrv.fcgi by default)
-    var server = '../adore-djatoka/resolver';
+            function identifier_switch(p_identifier) {
+                window.location = 'viewer.html?rft_id=' + p_identifier + '&identifiers=' + identifiers.join(',');
+            }
 
-    // The *full* image path on the server. This path does *not* need to be in the web
-    // server root directory. On Windows, use Unix style forward slash paths without
-    // the "c:" prefix
-    var images = '';
+            // Clean up a passed identifier
+            function identifier_clean(p_identifier) {
+                // Make sure only alphanumeric, hyphens and underscores are returned
+                return p_identifier.replace(/[^()a-zA-Z0-9_-]/g, '');
+            }
+        </script>
+    </head>
 
-    // Copyright or information message
-    var credit = '';
-    
-    // Global variable for holding the passed identifiers
-    var identifiers = [];
-    
-    // Obtain URL Parameters if present
-    var query = location.href.substring(location.href.indexOf("?")+1);
-    var vars = query.split("&");
-    for (var i=0;i<vars.length;i++) {
-      var pair = vars[i].split("=");
-      
-      switch( pair[0] ) {
-          case 'rft_id':
-              images = pair[1];
-              break;
-          case 'identifiers':
-              identifiers = pair[1].split(',');
-              break;
-      }
-    }
-    
-    // Check for validity
-    images = identifier_clean( images );
-    // Create drop-down entries for identifiers
-    var selectDivEl = $('identifier_select_div');
-    var selectEl = $('identifier_select');
-    for( var i = 0; i < identifiers.length; i++ ) {
-        identifiers[i] = identifier_clean( identifiers[i] );
-        
-        // Create new option element
-        var optionEl = new Element( 'option', { value: identifiers[i], html: identifiers[i] } );
-        // inject option element into select
-        optionEl.inject(selectEl);
-        
-        // Create thumbnail element
-        var thumbnailEl = new Element( 'img',
-        {
-            src: server + '?url_ver=Z39.88-2004&rft_id=' + identifiers[i] + '&svc_id=info:lanl-repo/svc/getRegion&svc_val_fmt=info:ofi/fmt:kev:mtx:jpeg2000&svc.format=image/jpeg&svc.scale=160,0',
-            styles: {
-                margin: '2px 2px 0px 2px',
-                cursor: 'pointer'
-            },
-            id: identifiers[i]
-        } );
-        thumbnailEl.inject(selectDivEl);
-        
-        // Check if this is the currently active image
-        if( identifiers[i] == images ) {
-            thumbnailEl.set( 'styles', { border: '1px solid yellow', margin: '0px' } );
-        }
-        
-        // Add event handler for click
-        thumbnailEl.addEvent( 'click', function() {
-            identifier_switch( this.id );
-        } );
-        
-        // Add a footer div which contains the image filename
-        var thumbnailLabel = new Element( 'div', {
-            styles: {
-                'margin-bottom': '5px',
-                'text-align': 'center',
-                'color': '#FFFFFF',
-                'font-weight': 'bold'
-            },
-            html: identifiers[i]
-        } );
-        thumbnailLabel.inject(selectDivEl);
-    }
-    // Set correct value as selected 
-    selectEl.set( 'value', images );
-    
-    // Check if we have more than one image to be shown
-    if( identifiers.length <= 1 ) {
-        selectDivEl.destroy();
-    }
-    
-    // Create our viewer object - note: must assign this to the 'iip' variable.
-    // See documentation for more details of options
-    iip = new IIP( "targetframe", {
-		image: images,
-		server: server,
-		credit: credit, 
-		zoom: 1,
-		render: 'random',
-        showNavButtons: true
-    });
+    <body>
+        <div id="identifier_select_div" style="position: absolute; top: 50px; left: 10px; background-color: #222222; z-index: 1; text-align: center;">
+            <select id="identifier_select" onchange="identifier_select_onchange();" style="margin-bottom: 2px;"></select>
+            <br />
+        </div>
+        <div style="width:99%;height:99%;margin-left:auto;margin-right:auto" id="targetframe"></div>
 
-  </script>
- </body>
+        <script type="text/javascript">
+            // The iipsrv server path (/fcgi-bin/iipsrv.fcgi by default)
+            var server = '../adore-djatoka/resolver';
+
+            // The *full* image path on the server. This path does *not* need to be in the web
+            // server root directory. On Windows, use Unix style forward slash paths without
+            // the "c:" prefix
+            var images = '';
+
+            // Copyright or information message
+            var credit = '';
+
+            // Global variable for holding the passed identifiers
+            var identifiers = [];
+
+            // Obtain URL Parameters if present
+            var query = location.href.substring(location.href.indexOf("?") + 1);
+            var vars = query.split("&");
+            for (var i = 0; i < vars.length; i++) {
+                var pair = vars[i].split("=");
+
+                switch (pair[0]) {
+                    case 'rft_id':
+                        images = pair[1];
+                        break;
+                    case 'identifiers':
+                        identifiers = pair[1].split(',');
+                        break;
+                }
+            }
+
+            // Check for validity
+            images = identifier_clean(images);
+            // Create drop-down entries for identifiers
+            var selectDivEl = $('identifier_select_div');
+            var selectEl = $('identifier_select');
+            for (var i = 0; i < identifiers.length; i++) {
+                identifiers[i] = identifier_clean(identifiers[i]);
+
+                // Create new option element
+                var optionEl = new Element('option', {value: identifiers[i], html: identifiers[i]});
+                // inject option element into select
+                optionEl.inject(selectEl);
+
+                // Create thumbnail element
+                var thumbnailEl = new Element('img',
+                        {
+                            src: server + '?url_ver=Z39.88-2004&rft_id=' + identifiers[i] + '&svc_id=info:lanl-repo/svc/getRegion&svc_val_fmt=info:ofi/fmt:kev:mtx:jpeg2000&svc.format=image/jpeg&svc.scale=160,0',
+                            styles: {
+                                margin: '2px 2px 0px 2px',
+                                cursor: 'pointer'
+                            },
+                            id: identifiers[i]
+                        });
+                thumbnailEl.inject(selectDivEl);
+
+                // Check if this is the currently active image
+                if (identifiers[i] == images) {
+                    thumbnailEl.set('styles', {border: '1px solid yellow', margin: '0px'});
+                }
+
+                // Add event handler for click
+                thumbnailEl.addEvent('click', function () {
+                    identifier_switch(this.id);
+                });
+
+                // Add a footer div which contains the image filename
+                var thumbnailLabel = new Element('div', {
+                    styles: {
+                        'margin-bottom': '5px',
+                        'text-align': 'center',
+                        'color': '#FFFFFF',
+                        'font-weight': 'bold'
+                    },
+                    html: identifiers[i]
+                });
+                thumbnailLabel.inject(selectDivEl);
+            }
+            // Set correct value as selected
+            selectEl.set('value', images);
+
+            // Check if we have more than one image to be shown
+            if (identifiers.length <= 1) {
+                selectDivEl.destroy();
+            }
+
+            // Create our viewer object - note: must assign this to the 'iip' variable.
+            // See documentation for more details of options
+            iip = new IIP("targetframe", {
+                image: images,
+                server: server,
+                credit: credit,
+                zoom: 1,
+                render: 'random',
+                showNavButtons: true
+            });
+
+        </script>
+    </body>
 </html>
