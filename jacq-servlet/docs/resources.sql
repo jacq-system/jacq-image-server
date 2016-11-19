@@ -1,0 +1,1 @@
+ALTER TABLE `resources` ADD `public` INTEGER DEFAULT 1;
