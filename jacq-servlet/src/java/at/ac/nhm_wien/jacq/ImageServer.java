@@ -693,6 +693,40 @@ public class ImageServer extends HttpServlet {
     }
 
     /**
+     * Change public status of a resource
+     *
+     * @param params
+     */
+    public String x_setPublic(JSONArray params) throws Exception {
+        return this.setPublic(params.getString(0), params.getBoolean(1));
+    }
+
+    /**
+     * Change public status of a resource
+     *
+     * @param identifier Identifier of resource
+     * @param bPublic true / false if resource should be public
+     * @return
+     */
+    protected String setPublic(String identifier, boolean bPublic) throws Exception {
+        try {
+            // Update database with resource properties
+            PreparedStatement updatePublicStat = m_conn.prepareStatement("UPDATE `resources` SET `public` = ? WHERE `identifier` = ?");
+            updatePublicStat.setInt(1, (bPublic) ? 1 : 0);
+            updatePublicStat.setString(2, identifier);
+            updatePublicStat.executeUpdate();
+            updatePublicStat.close();
+        } catch (Exception e) {
+            System.err.println(e.getMessage());
+            e.printStackTrace();
+
+            throw new Exception(e.getMessage());
+        }
+
+        return identifier;
+    }
+
+    /**
      * PUBLIC FUNCTIONS END
      */
     /**
