@@ -17,10 +17,14 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 package at.ac.nhm_wien.jacq;
 
+import org.json.JSONArray;
+import org.json.JSONException;
+
 import java.io.File;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
 
@@ -147,5 +151,25 @@ public class Utilities {
         }
         
         return dirContent;
-    }    
+    }
+
+    public static ArrayList<Object> toArrayList(JSONArray jArr)
+    {
+        ArrayList<Object> list = new ArrayList<Object>();
+        try {
+            for (int i=0; i < jArr.length(); i++){
+                list.add(jArr.get(i));
+            }
+        } catch ( JSONException e) {}
+
+        return list;
+    }
+
+    public static JSONArray subJsonArray(JSONArray originalJsonArray, int fromIndex, int toIndex ) {
+
+        ArrayList<Object> list = toArrayList( originalJsonArray );
+        list.subList( fromIndex, toIndex );
+
+        return new JSONArray( list );
+    }
 }
