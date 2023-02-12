@@ -27,6 +27,7 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.Properties;
 
 /**
  * @author wkoller
@@ -76,7 +77,7 @@ public class Utilities {
      * naming
      * @return String Returns the name of the output directory on success (with
      * trailing slash)
-     * @throws TransformException
+     * @throws Exception
      */
     public static String createDirectory(String p_baseDir, String archiveDir) throws Exception {
         File baseDir = new File(p_baseDir);
@@ -171,5 +172,10 @@ public class Utilities {
         list.subList( fromIndex, toIndex );
 
         return new JSONArray( list );
+    }
+
+    public static boolean isLegacy(Properties m_properties) {
+        return m_properties == null ||
+                m_properties.getProperty("ImageServer.operationMode", "legacy").equals("legacy");
     }
 }

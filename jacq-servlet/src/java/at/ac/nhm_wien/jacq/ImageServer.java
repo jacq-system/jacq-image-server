@@ -20,6 +20,8 @@ package at.ac.nhm_wien.jacq;
 import java.io.*;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -65,7 +67,7 @@ public class ImageServer extends HttpServlet {
     public void init() throws ServletException {
         try {
             // Load properties
-            m_properties.load(new FileInputStream(getServletContext().getRealPath("/WEB-INF/" + this.getClass().getSimpleName() + ".properties")));
+            m_properties.load(Files.newInputStream(Paths.get(getServletContext().getRealPath("/WEB-INF/" + this.getClass().getSimpleName() + ".properties"))));
             // Establish "connection" to SQLite database
             m_conn = Utilities.getConnection();
 
@@ -74,7 +76,14 @@ public class ImageServer extends HttpServlet {
             // Check for resources table
             ResultSet rs = stat.executeQuery("SELECT name FROM sqlite_master WHERE name = 'resources' AND type = 'table'");
             if (!rs.next()) {
-                stat.executeUpdate("CREATE table `resources` ( `r_id` INTEGER CONSTRAINT `r_id_pk` PRIMARY KEY AUTOINCREMENT, `identifier` TEXT CONSTRAINT `identifier_unique` UNIQUE ON CONFLICT FAIL, `imageFile` TEXT, `public` INTEGER DEFAULT 1 )");
+                StringBuilder builder = new StringBuilder("CREATE table `resources` ( `r_id` INTEGER CONSTRAINT `r_id_pk` PRIMARY KEY AUTOINCREMENT, `identifier` TEXT CONSTRAINT `identifier_unique` UNIQUE ON CONFLICT FAIL, `imageFile` TEXT");
+                if(!Utilities.isLegacy(m_properties)) {
+                    builder.append(", `public` INTEGER DEFAULT 1 ");
+                }
+
+                builder.append(")");
+
+                stat.executeUpdate(builder.toString());
             }
             rs.close();
             stat.close();
@@ -553,13 +562,19 @@ public class ImageServer extends HttpServlet {
         // Create plain string where condition
         String whereConditions = String.join(" OR ", conditions);
 
-        // check if only public entries should be returned
-        if (bPublicOnly) {
-            whereConditions = "(" + whereConditions + ") AND `public` = 1";
+        String requestedFields = "`identifier`";
+
+        // Apply permissions if not in legacy mode
+        if(!Utilities.isLegacy(m_properties)) {
+            requestedFields += ", `public`";
+            // check if only public entries should be returned
+            if (bPublicOnly) {
+                whereConditions = "(" + whereConditions + ") AND `public` = 1";
+            }
         }
 
         // Prepare the actual statement
-        PreparedStatement stat = m_conn.prepareStatement("SELECT `identifier`, `public` FROM `resources` WHERE " + whereConditions + " ORDER BY `identifier` ASC");
+        PreparedStatement stat = m_conn.prepareStatement("SELECT " + requestedFields + " FROM `resources` WHERE " + whereConditions + " ORDER BY `identifier` ASC");
         for (int i = 0; i < identifiers.length(); i++) {
             // Add string (but make sure the underscore is masked)
             stat.setString(i + 1, identifiers.getString(i).replaceAll("_", Matcher.quoteReplacement("\\_")));
@@ -568,13 +583,18 @@ public class ImageServer extends HttpServlet {
         // Execute the query & fetch all found files
         ResultSet rs = stat.executeQuery();
         while (rs.next()) {
-            // fetch resource details and add them as object
-            JSONObject resourceDetails = new JSONObject();
-            resourceDetails.put("identifier", rs.getString("identifier"));
-            resourceDetails.put("public", rs.getString("public"));
+            if(Utilities.isLegacy(m_properties)) {
+                resources.put(rs.getString("identifier"));
+            }
+            else {
+                // fetch resource details and add them as object
+                JSONObject resourceDetails = new JSONObject();
+                resourceDetails.put("identifier", rs.getString("identifier"));
+                resourceDetails.put("public", rs.getString("public"));
 
-            // add to return list
-            resources.put(resourceDetails);
+                // add to return list
+                resources.put(resourceDetails);
+            }
         }
         rs.close();
         stat.close();
@@ -692,6 +712,9 @@ public class ImageServer extends HttpServlet {
      * @param params
      */
     public String x_setPublic(JSONArray params) throws Exception {
+        if(Utilities.isLegacy(m_properties)) {
+            throw new Exception("Servlet is in legacy mode, cannot set public status");
+        }
         return this.setPublic(params.getString(0), params.getBoolean(1));
     }
 
