@@ -663,7 +663,19 @@ public class ImageServer extends HttpServlet {
                 resourceDetails.put("public", rs.getString("public"));
             }
             String imagefile = rs.getString("imagefile");
-            resourceDetails.put("path", imagefile);
+
+            if(!Paths.get(imagefile).isAbsolute()) {
+                imagefile = m_properties.getProperty("ImageServer.resourcesDirectory") + "/" + imagefile;
+                imagefile = imagefile.replaceAll("//", "/").replaceAll("//", "/");
+            }
+
+            String relativePath = imagefile.substring(m_properties.getProperty("ImageServer.resourcesDirectory").length());
+
+            if(!relativePath.startsWith("/")) {
+                relativePath = "/" + relativePath;
+            }
+
+            resourceDetails.put("path", relativePath);
             try {
                 JP2ImageInfo jp2 = new JP2ImageInfo(new File(imagefile));
                 ImageRecord ir = jp2.getImageRecord();
