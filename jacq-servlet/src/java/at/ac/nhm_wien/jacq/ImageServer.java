@@ -20,29 +20,26 @@ package at.ac.nhm_wien.jacq;
 import java.io.*;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.Statement;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.Map;
-import java.util.Properties;
+import java.util.*;
 import java.util.regex.Matcher;
 
-import javax.servlet.ServletException;
-import javax.servlet.http.HttpServlet;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
+import at.ac.nhm_wien.jacq.jp2.ImageRecord;
+import at.ac.nhm_wien.jacq.jp2.JP2ImageInfo;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServlet;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 
-import net.sf.json.JSONArray;
-import net.sf.json.JSONObject;
-
-import org.apache.commons.lang.StringUtils;
+import org.json.JSONArray;
+import org.json.JSONObject;
 
 /**
- *
  * @author wkoller
  */
 public class ImageServer extends HttpServlet {
@@ -71,7 +68,7 @@ public class ImageServer extends HttpServlet {
     public void init() throws ServletException {
         try {
             // Load properties
-            m_properties.load(new FileInputStream(getServletContext().getRealPath("/WEB-INF/" + this.getClass().getSimpleName() + ".properties")));
+            m_properties.load(Files.newInputStream(Paths.get(getServletContext().getRealPath("/WEB-INF/" + this.getClass().getSimpleName() + ".properties"))));
             // Establish "connection" to SQLite database
             m_conn = Utilities.getConnection();
 
@@ -80,7 +77,14 @@ public class ImageServer extends HttpServlet {
             // Check for resources table
             ResultSet rs = stat.executeQuery("SELECT name FROM sqlite_master WHERE name = 'resources' AND type = 'table'");
             if (!rs.next()) {
-                stat.executeUpdate("CREATE table `resources` ( `r_id` INTEGER CONSTRAINT `r_id_pk` PRIMARY KEY AUTOINCREMENT, `identifier` TEXT CONSTRAINT `identifier_unique` UNIQUE ON CONFLICT FAIL, `imageFile` TEXT, `public` INTEGER DEFAULT 1 )");
+                StringBuilder builder = new StringBuilder("CREATE table `resources` ( `r_id` INTEGER CONSTRAINT `r_id_pk` PRIMARY KEY AUTOINCREMENT, `identifier` TEXT CONSTRAINT `identifier_unique` UNIQUE ON CONFLICT FAIL, `imageFile` TEXT");
+                if (!Utilities.isLegacy(m_properties)) {
+                    builder.append(", `public` INTEGER DEFAULT 1 ");
+                }
+
+                builder.append(")");
+
+                stat.executeUpdate(builder.toString());
             }
             rs.close();
             stat.close();
@@ -138,7 +142,7 @@ public class ImageServer extends HttpServlet {
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
         if (req.getParameter("request") != null) {
-            resp.getOutputStream().print(handleRequest(JSONObject.fromObject(req.getParameter("request"))));
+            resp.getOutputStream().print(handleRequest(new JSONObject(req.getParameter("request"))));
         }
         // Quite hacky way to support Mootools interpretation of a JSON-RPC call
         else {
@@ -153,21 +157,19 @@ public class ImageServer extends HttpServlet {
 
                 // Id & Method are handled special
                 if (currEntry.getKey().equals("id") || currEntry.getKey().equals("method")) {
-                    reqObject.element(currEntry.getKey(), currEntry.getValue()[0]);
-                }
-                else // Check if we have passed an array as parameter
+                    reqObject.put(currEntry.getKey(), currEntry.getValue()[0]);
+                } else // Check if we have passed an array as parameter
                 {
                     if (currEntry.getValue().length > 1) {
-                        params.element(JSONArray.fromObject(currEntry.getValue()));
-                    }
-                    else {
-                        params.element(currEntry.getValue()[0]);
+                        params.put(new JSONArray(currEntry.getValue()));
+                    } else {
+                        params.put(currEntry.getValue()[0]);
                     }
                 }
             }
 
             // Finally add the parameter as well
-            reqObject.element("params", params);
+            reqObject.put("params", params);
 
             // Run the query
             resp.getOutputStream().print(handleRequest(reqObject));
@@ -178,9 +180,9 @@ public class ImageServer extends HttpServlet {
     protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
         String inputString = "";
         BufferedReader in = new BufferedReader(new InputStreamReader(req.getInputStream()));
-        for (String buffer; (buffer = in.readLine()) != null; inputString += buffer + "\n");
+        for (String buffer; (buffer = in.readLine()) != null; inputString += buffer + "\n") ;
 
-        resp.getOutputStream().print(handleRequest(JSONObject.fromObject(inputString)));
+        resp.getOutputStream().print(handleRequest(new JSONObject(inputString)));
     }
 
     /**
@@ -192,10 +194,10 @@ public class ImageServer extends HttpServlet {
     protected String handleRequest(JSONObject reqObject) {
         // prepare default response object
         JSONObject response = new JSONObject();
-        response.put("error", null);
-        response.put("result", null);
+        response.put("error", (Map<?, ?>) null);
+        response.put("result", (Map<?, ?>) null);
         String methodName = "";
-        if (!reqObject.isNullObject()) {
+        if (!reqObject.isEmpty()) {
             try {
                 try {
                     // Fetch passed parameters
@@ -232,8 +234,7 @@ public class ImageServer extends HttpServlet {
                                 callMethod = method;
                                 response.put("result", callMethod.invoke(this));
                                 break;
-                            }
-                            else if (requestParams.size() > 0 && parameterTypes.length > 0 && parameterTypes[0] == JSONArray.class) {
+                            } else if (requestParams.length() > 0 && parameterTypes.length > 0 && parameterTypes[0] == JSONArray.class) {
                                 callMethod = method;
                                 response.put("result", callMethod.invoke(this, requestParams));
                                 break;
@@ -284,8 +285,7 @@ public class ImageServer extends HttpServlet {
 
                 throw new Exception("Error while trying to start thread: " + e.getMessage());
             }
-        }
-        else {
+        } else {
             throw new Exception("Thread already running!");
         }
     }
@@ -320,7 +320,7 @@ public class ImageServer extends HttpServlet {
             ResultSet rs = prepStat.executeQuery();
 
             while (rs.next()) {
-                resources.add(rs.getString("identifier"));
+                resources.put(rs.getString("identifier"));
             }
             rs.close();
             prepStat.close();
@@ -341,7 +341,7 @@ public class ImageServer extends HttpServlet {
             Statement stat = m_conn.createStatement();
             ResultSet rs = stat.executeQuery("SELECT `identifier` FROM `resources` ORDER BY `identifier`");
             while (rs.next()) {
-                resources.add(rs.getString("identifier"));
+                resources.put(rs.getString("identifier"));
             }
             rs.close();
             stat.close();
@@ -356,7 +356,7 @@ public class ImageServer extends HttpServlet {
      * Get a list of threads (after a certain date, optionally filtered by type)
      */
     public JSONObject x_listThreads(JSONArray params) throws Exception {
-        if (params.size() > 1) {
+        if (params.length() > 1) {
             return listThreads(params.getInt(0), params.getInt(1));
         }
         // By default do not filter by thread type
@@ -369,7 +369,7 @@ public class ImageServer extends HttpServlet {
      * List all import threads
      *
      * @param cutoff_date threads older than cutoff_date wont be returned
-     * @param type limit returned threads to a certain type
+     * @param type        limit returned threads to a certain type
      */
     private JSONObject listThreads(int cutoff_date, int type) throws Exception {
         try {
@@ -381,8 +381,7 @@ public class ImageServer extends HttpServlet {
             if (type > 0) {
                 stat = m_conn.prepareStatement("SELECT `t_id`, `starttime`, `endtime`, `type` FROM `threads` WHERE `starttime` >= ? AND `type` = ? ORDER BY `t_id` DESC");
                 stat.setInt(2, type);
-            }
-            else {
+            } else {
                 stat = m_conn.prepareStatement("SELECT `t_id`, `starttime`, `endtime`, `type` FROM `threads` WHERE `starttime` >= ? ORDER BY `t_id` DESC");
             }
             stat.setInt(1, cutoff_date);
@@ -432,7 +431,7 @@ public class ImageServer extends HttpServlet {
                 logObj.put("logtime", rs.getString("logtime"));
                 logObj.put("identifier", rs.getString("identifier"));
                 logObj.put("message", rs.getString("message"));
-                logs.add(logObj);
+                logs.put(logObj);
             }
             rs.close();
             stat.close();
@@ -453,8 +452,8 @@ public class ImageServer extends HttpServlet {
     /**
      * Start exporting images
      *
-     * @param p_exportPath relative path inside the exportDirectory property
-     * @param p_identifier list of identifiers to export
+     * @param p_exportPath  relative path inside the exportDirectory property
+     * @param p_identifiers list of identifiers to export
      */
     private int exportImages(String p_exportPath, JSONArray p_identifiers) throws Exception {
         // Check if thread is still alive
@@ -506,7 +505,7 @@ public class ImageServer extends HttpServlet {
 
             // check if (optional) second parameter is present
             boolean bPublicOnly = false;
-            if (params.size() > 1) {
+            if (params.length() > 1) {
                 if (params.getBoolean(1)) {
                     bPublicOnly = true;
                 }
@@ -515,19 +514,19 @@ public class ImageServer extends HttpServlet {
             // in order to prevent SQLLite from going mad we make the calls in 100 unit steps
             int fromIndex = 0;
             JSONArray resources = new JSONArray();
-            while (fromIndex < identifiers.size()) {
+            while (fromIndex < identifiers.length()) {
                 int toIndex = fromIndex + 100;
 
                 // check for out of bound
-                if (toIndex > identifiers.size()) {
-                    toIndex = identifiers.size();
+                if (toIndex > identifiers.length()) {
+                    toIndex = identifiers.length();
                 }
 
                 // fetch next list and add it to resources
-                resources.addAll(this.listResources(JSONArray.fromObject(identifiers.subList(fromIndex, toIndex)), bPublicOnly));
+                resources.putAll(this.listResources(new JSONArray(Utilities.subJsonArray(identifiers, fromIndex, toIndex)), bPublicOnly));
                 fromIndex = toIndex;
 
-                System.err.println("processed: " + toIndex + " / " + identifiers.size());
+                System.err.println("processed: " + toIndex + " / " + identifiers.length());
             }
 
             // prepare response
@@ -545,42 +544,152 @@ public class ImageServer extends HttpServlet {
      */
     private JSONArray listResources(JSONArray identifiers, boolean bPublicOnly) throws Exception {
         JSONArray resources = new JSONArray();
+        // Execute the query & fetch all found files
+        PreparedStatement stat = loadResourcesFromDB(identifiers, bPublicOnly, new String[]{});
+        ResultSet rs = stat.executeQuery();
+        while (rs.next()) {
+            if (Utilities.isLegacy(m_properties)) {
+                resources.put(rs.getString("identifier"));
+            } else {
+                // fetch resource details and add them as object
+                JSONObject resourceDetails = new JSONObject();
+                resourceDetails.put("identifier", rs.getString("identifier"));
+                resourceDetails.put("public", rs.getString("public"));
 
+                // add to return list
+                resources.put(resourceDetails);
+            }
+        }
+        rs.close();
+        stat.close();
+
+        return resources;
+    }
+
+    private PreparedStatement loadResourcesFromDB(JSONArray identifiers, boolean bPublicOnly, String[] additionalFields) throws Exception {
         // Check if we have at least one identifier
-        if (identifiers.size() < 1) {
+        if (identifiers.length() < 1) {
             throw new Exception("No identifiers passed");
         }
 
         // Convert conditions to ArrayList
         ArrayList<String> conditions = new ArrayList<String>();
-        for (int i = 0; i < identifiers.size(); i++) {
+        for (int i = 0; i < identifiers.length(); i++) {
             conditions.add("`identifier` LIKE ? ESCAPE '\\'");
         }
         // Create plain string where condition
-        String whereConditions = StringUtils.join(conditions, " OR ");
+        String whereConditions = String.join(" OR ", conditions);
 
-        // check if only public entries should be returned
-        if (bPublicOnly) {
-            whereConditions = "(" + whereConditions + ") AND `public` = 1";
+        StringBuilder requestedFields = new StringBuilder("`identifier`");
+
+        for (String s : additionalFields) {
+            requestedFields.append(", `").append(s).append("`");
+        }
+
+        // Apply permissions if not in legacy mode
+        if (!Utilities.isLegacy(m_properties)) {
+            requestedFields.append(", `public`");
+            // check if only public entries should be returned
+            if (bPublicOnly) {
+                whereConditions = "(" + whereConditions + ") AND `public` = 1";
+            }
         }
 
         // Prepare the actual statement
-        PreparedStatement stat = m_conn.prepareStatement("SELECT `identifier`, `public` FROM `resources` WHERE " + whereConditions + " ORDER BY `identifier` ASC");
-        for (int i = 0; i < identifiers.size(); i++) {
+        PreparedStatement stat = m_conn.prepareStatement("SELECT " + requestedFields + " FROM `resources` WHERE " + whereConditions + " ORDER BY `identifier` ASC");
+        for (int i = 0; i < identifiers.length(); i++) {
             // Add string (but make sure the underscore is masked)
             stat.setString(i + 1, identifiers.getString(i).replaceAll("_", Matcher.quoteReplacement("\\_")));
         }
 
         // Execute the query & fetch all found files
+        return stat;
+    }
+
+    /**
+     * Return all found resources for a given list of identifiers
+     *
+     * @param params
+     */
+    public JSONArray x_listResourcesWithMetadata(JSONArray params) throws Exception {
+        try {
+            // fetch list of resources
+            JSONArray identifiers = params.getJSONArray(0);
+
+            // check if (optional) second parameter is present
+            boolean bPublicOnly = false;
+            if (params.length() > 1) {
+                if (params.getBoolean(1)) {
+                    bPublicOnly = true;
+                }
+            }
+
+            // in order to prevent SQLLite from going mad we make the calls in 100 unit steps
+            int fromIndex = 0;
+            JSONArray resources = new JSONArray();
+            while (fromIndex < identifiers.length()) {
+                int toIndex = fromIndex + 100;
+
+                // check for out of bound
+                if (toIndex > identifiers.length()) {
+                    toIndex = identifiers.length();
+                }
+
+                // fetch next list and add it to resources
+                resources.putAll(this.listResourcesWithMetadata(new JSONArray(Utilities.subJsonArray(identifiers, fromIndex, toIndex)), bPublicOnly));
+                fromIndex = toIndex;
+
+                System.err.println("processed: " + toIndex + " / " + identifiers.length());
+            }
+
+            // prepare response
+            return resources;
+        } catch (Exception e) {
+            // in case of an error, return it
+            throw new Exception(e.getMessage());
+        }
+    }
+
+    private JSONArray listResourcesWithMetadata(JSONArray identifiers, boolean bPublicOnly) throws Exception {
+        JSONArray resources = new JSONArray();
+        // Execute the query & fetch all found files
+        PreparedStatement stat = loadResourcesFromDB(identifiers, bPublicOnly, new String[]{"imagefile"});
         ResultSet rs = stat.executeQuery();
         while (rs.next()) {
             // fetch resource details and add them as object
             JSONObject resourceDetails = new JSONObject();
             resourceDetails.put("identifier", rs.getString("identifier"));
-            resourceDetails.put("public", rs.getString("public"));
+            if (!Utilities.isLegacy(m_properties)) {
+                resourceDetails.put("public", rs.getString("public"));
+            }
+            String imagefile = rs.getString("imagefile");
+
+            if(!Paths.get(imagefile).isAbsolute()) {
+                imagefile = m_properties.getProperty("ImageServer.resourcesDirectory") + "/" + imagefile;
+                imagefile = imagefile.replaceAll("//", "/").replaceAll("//", "/");
+            }
+
+            String relativePath = imagefile.substring(m_properties.getProperty("ImageServer.resourcesDirectory").length());
+
+            if(!relativePath.startsWith("/")) {
+                relativePath = "/" + relativePath;
+            }
+
+            resourceDetails.put("path", relativePath);
+            try {
+                JP2ImageInfo jp2 = new JP2ImageInfo(new File(imagefile));
+                ImageRecord ir = jp2.getImageRecord();
+                resourceDetails.put("width", ir.getWidth());
+                resourceDetails.put("height", ir.getHeight());
+            }
+            catch (Exception ex) {
+                ex.printStackTrace();
+                resourceDetails.put("width", -1);
+                resourceDetails.put("height", -1);
+            }
 
             // add to return list
-            resources.add(resourceDetails);
+            resources.put(resourceDetails);
         }
         rs.close();
         stat.close();
@@ -594,10 +703,9 @@ public class ImageServer extends HttpServlet {
      * @deprecated use listResources instead
      */
     public JSONArray x_listSpecimenImages(JSONArray params) throws Exception {
-        if (params.size() >= 3 && params.getBoolean(2)) {
+        if (params.length() >= 3 && params.getBoolean(2)) {
             return listSpecimenImages(params.getInt(0), params.getString(1), true);
-        }
-        else {
+        } else {
             return listSpecimenImages(params.getInt(0), params.getString(1), false);
         }
     }
@@ -605,10 +713,10 @@ public class ImageServer extends HttpServlet {
     /**
      * Returns a list of file identifiers for a given specimen
      *
-     * @deprecated use listResources instead
-     * @param specimen_id Specimen ID
+     * @param specimen_id   Specimen ID
      * @param herbar_number Herbarnumber of specimen
      * @param excludeTabObs Exclude tab and obs entries
+     * @deprecated use listResources instead
      */
     private JSONArray listSpecimenImages(int specimen_id, String herbar_number, boolean excludeTabObs) throws Exception {
         try {
@@ -618,15 +726,15 @@ public class ImageServer extends HttpServlet {
             // Create all possible variants of filenaming
             JSONArray identifiers = new JSONArray();
             if (!excludeTabObs) {
-                identifiers.add("tab_" + String.valueOf(specimen_id));
-                identifiers.add("obs_" + String.valueOf(specimen_id));
-                identifiers.add("tab_" + String.valueOf(specimen_id) + "_%");
-                identifiers.add("obs_" + String.valueOf(specimen_id) + "_%");
+                identifiers.put("tab_" + String.valueOf(specimen_id));
+                identifiers.put("obs_" + String.valueOf(specimen_id));
+                identifiers.put("tab_" + String.valueOf(specimen_id) + "_%");
+                identifiers.put("obs_" + String.valueOf(specimen_id) + "_%");
             }
-            identifiers.add(herbar_number);
-            identifiers.add(herbar_number + "_%");
-            identifiers.add(herbar_number + "A");
-            identifiers.add(herbar_number + "B");
+            identifiers.put(herbar_number);
+            identifiers.put(herbar_number + "_%");
+            identifiers.put(herbar_number + "A");
+            identifiers.put(herbar_number + "B");
 
             // Finally list all resources using the identifier
             return this.listResources(identifiers, false);
@@ -698,6 +806,9 @@ public class ImageServer extends HttpServlet {
      * @param params
      */
     public String x_setPublic(JSONArray params) throws Exception {
+        if (Utilities.isLegacy(m_properties)) {
+            throw new Exception("Servlet is in legacy mode, cannot set public status");
+        }
         return this.setPublic(params.getString(0), params.getBoolean(1));
     }
 
@@ -705,7 +816,7 @@ public class ImageServer extends HttpServlet {
      * Change public status of a resource
      *
      * @param identifier Identifier of resource
-     * @param bPublic true / false if resource should be public
+     * @param bPublic    true / false if resource should be public
      * @return
      */
     protected String setPublic(String identifier, boolean bPublic) throws Exception {

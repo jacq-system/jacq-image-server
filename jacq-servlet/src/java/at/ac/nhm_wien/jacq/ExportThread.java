@@ -20,7 +20,7 @@ package at.ac.nhm_wien.jacq;
 import java.io.File;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
-import net.sf.json.JSONArray;
+import org.json.JSONArray;
 
 /**
  *
@@ -60,7 +60,7 @@ public class ExportThread extends ImageServerThread {
             PreparedStatement archiveSelect = m_conn.prepareStatement("SELECT `imageFile` FROM `archive_resources` WHERE `identifier` = ?");
 
             // Fetch paths for identifiers
-            for( int i = 0; i < m_identifiers.size(); i++ ) {
+            for( int i = 0; i < m_identifiers.length(); i++ ) {
                 String identifier = m_identifiers.getString(i);
 
                 archiveSelect.setString(1, identifier);
